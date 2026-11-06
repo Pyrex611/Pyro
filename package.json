@@ -1,0 +1,25 @@
+{
+  "name": "pyro",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "packages/sources/*"
+  ],
+  "scripts": {
+    "dev": "next dev apps/web",
+    "build": "npm run build --workspace apps/web",
+    "start": "next start apps/web",
+    "typecheck": "tsc --noEmit",
+    "migrate": "node scripts/migrate.mjs",
+    "seed": "node scripts/seed.mjs",
+    "mock:scrape": "node scripts/mock-scraper.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "pg": "^8.12.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

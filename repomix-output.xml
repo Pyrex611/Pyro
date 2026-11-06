@@ -1,0 +1,3482 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+.env.example
+.gitignore
+apps/web/.gitignore
+apps/web/app/api/health/route.ts
+apps/web/app/api/leads/route.ts
+apps/web/app/api/runs/[id]/records/route.ts
+apps/web/app/api/runs/[id]/route.ts
+apps/web/app/api/runs/route.ts
+apps/web/app/globals.css
+apps/web/app/layout.tsx
+apps/web/app/leads/leads-client.tsx
+apps/web/app/leads/page.tsx
+apps/web/app/overview/page.tsx
+apps/web/app/page.tsx
+apps/web/app/runs/[id]/page.tsx
+apps/web/app/runs/[id]/run-detail-client.tsx
+apps/web/app/runs/page.tsx
+apps/web/app/settings/page.tsx
+apps/web/app/sources/gmaps/gmaps-client.tsx
+apps/web/app/sources/gmaps/page.tsx
+apps/web/app/sources/page.tsx
+apps/web/components/badge.tsx
+apps/web/components/sidebar.tsx
+apps/web/components/status-banner.tsx
+apps/web/lib/config.ts
+apps/web/lib/csv.ts
+apps/web/lib/format.ts
+apps/web/lib/runner.ts
+apps/web/lib/store/file-store.ts
+apps/web/lib/store/index.ts
+apps/web/lib/store/supabase-store.ts
+apps/web/lib/store/types.ts
+apps/web/next-env.d.ts
+apps/web/next.config.mjs
+apps/web/package.json
+apps/web/postcss.config.mjs
+apps/web/tailwind.config.ts
+apps/web/tsconfig.json
+docs/PHASE0.md
+package.json
+packages/cli/package.json
+packages/cli/src/index.ts
+packages/core/package.json
+packages/core/src/budget.ts
+packages/core/src/core.test.ts
+packages/core/src/index.ts
+packages/core/src/launcher.test.ts
+packages/core/src/launcher.ts
+packages/core/src/normalize.ts
+packages/core/src/resolver.ts
+packages/core/src/runner.ts
+packages/core/src/sinks.ts
+packages/core/src/store.ts
+packages/core/src/testkit.ts
+packages/core/src/types.ts
+README.md
+scripts/check-state.mjs
+scripts/env.example.cmd
+SETUP.md
+sources/echo/package.json
+sources/echo/src/echo.test.ts
+sources/echo/src/index.ts
+sources/gmaps/package.json
+sources/gmaps/scraper/.dockerignore
+sources/gmaps/scraper/.env.example
+sources/gmaps/scraper/Dockerfile
+sources/gmaps/scraper/job.js
+sources/gmaps/scraper/job.test.js
+sources/gmaps/scraper/package.additions.json
+sources/gmaps/scraper/package.json
+sources/gmaps/scraper/persist.js
+sources/gmaps/scraper/scraper.js
+sources/gmaps/scraper/server.js
+sources/gmaps/scraper/utils.js
+sources/gmaps/src/gmaps.test.ts
+sources/gmaps/src/index.ts
+sources/gmaps/src/map.ts
+supabase/migrations/0001_init.sql
+tsconfig.json
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path=".env.example">
+# Never commit real values. Production secrets live in Secret Manager (workers) and Vercel env (web).
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+# JSON map of hard caps per cost unit, e.g. {"places.pro":5000,"places.enterprise":1000,"apify.usd":5}
+BUDGET_CAPS={}
+</file>
+
+<file path=".gitignore">
+node_modules
+.env
+.env.*
+!.env.example
+out/
+
+server.log
+scripts/env.cmd
+</file>
+
+<file path="apps/web/.gitignore">
+node_modules
+.next
+.data
+.env.local
+</file>
+
+<file path="apps/web/app/api/health/route.ts">
+import { NextResponse } from "next/server";
+import { isGmapsConfigured, isSupabaseConfigured, config } from "@/lib/config";
+import { getStore } from "@/lib/store";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function GET() {
+  return NextResponse.json({
+    gmapsConfigured: isGmapsConfigured(),
+    gmapsServiceUrl: isGmapsConfigured() ? config.gmapsServiceUrl : null,
+    supabaseConfigured: isSupabaseConfigured(),
+    backend: getStore().backend,
+  });
+}
+</file>
+
+<file path="apps/web/app/api/leads/route.ts">
+import { NextRequest, NextResponse } from "next/server";
+import { resolve } from "@leads/core";
+import { getStore } from "@/lib/store";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function GET(req: NextRequest) {
+  const limit = Number(req.nextUrl.searchParams.get("limit") ?? 2000);
+  const records = await getStore().listAllRecords(Number.isFinite(limit) ? limit : 2000);
+  const entities = resolve(records.map((r) => ({ ...r, sourceId: r.sourceId })) as any);
+  return NextResponse.json({ entities, recordCount: records.length });
+}
+</file>
+
+<file path="apps/web/app/api/runs/[id]/records/route.ts">
+import { NextRequest, NextResponse } from "next/server";
+import { getStore } from "@/lib/store";
+import { toCsv } from "@/lib/csv";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+  const store = getStore();
+  const run = await store.getRun(params.id);
+  if (!run) return NextResponse.json({ error: "not found" }, { status: 404 });
+  const limit = Number(req.nextUrl.searchParams.get("limit") ?? 1000);
+  const records = await store.listRecords(params.id, Number.isFinite(limit) ? limit : 1000);
+  const format = req.nextUrl.searchParams.get("format");
+  if (format === "csv") {
+    return new NextResponse(toCsv(records), { headers: { "content-type": "text/csv", "content-disposition": `attachment; filename="${params.id}.csv"` } });
+  }
+  if (format === "jsonl") {
+    const body = records.map((r) => JSON.stringify(r)).join("\n") + (records.length ? "\n" : "");
+    return new NextResponse(body, { headers: { "content-type": "application/x-ndjson", "content-disposition": `attachment; filename="${params.id}.jsonl"` } });
+  }
+  return NextResponse.json({ records });
+}
+</file>
+
+<file path="apps/web/app/api/runs/[id]/route.ts">
+import { NextRequest, NextResponse } from "next/server";
+import { getStore } from "@/lib/store";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+  const run = await getStore().getRun(params.id);
+  if (!run) return NextResponse.json({ error: "not found" }, { status: 404 });
+  return NextResponse.json({ run });
+}
+
+export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const body = await req.json().catch(() => ({}));
+  if (body?.action !== "cancel") return NextResponse.json({ error: "unsupported action" }, { status: 400 });
+  const store = getStore();
+  const run = await store.getRun(params.id);
+  if (!run) return NextResponse.json({ error: "not found" }, { status: 404 });
+  await store.requestCancel(params.id);
+  return NextResponse.json({ ok: true });
+}
+</file>
+
+<file path="apps/web/app/api/runs/route.ts">
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { getStore } from "@/lib/store";
+import { startGmapsRun } from "@/lib/runner";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const Body = z.object({
+  source: z.literal("gmaps"),
+  input: z.object({
+    city: z.string().min(1), keyword: z.string().min(1),
+    radius: z.number().int().min(100).max(50000).optional(),
+    areas: z.array(z.string().min(1)).optional(),
+  }),
+});
+
+export async function GET(req: NextRequest) {
+  const store = getStore();
+  const source = req.nextUrl.searchParams.get("source");
+  const runs = await store.listRuns(100);
+  return NextResponse.json({ runs: source ? runs.filter((r) => r.source === source) : runs, backend: store.backend });
+}
+
+export async function POST(req: NextRequest) {
+  const body = await req.json().catch(() => null);
+  const parsed = Body.safeParse(body);
+  if (!parsed.success) return NextResponse.json({ error: "Invalid input", issues: parsed.error.issues }, { status: 400 });
+  const run = await startGmapsRun(parsed.data.input);
+  return NextResponse.json({ run }, { status: 201 });
+}
+</file>
+
+<file path="apps/web/app/globals.css">
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #f7f7f5; --surface: #ffffff; --border: #e5e4df; --text: #1c1c1a; --muted: #6b6a64;
+  --accent: #0f6e56; --accent-bg: #e6f2ee; --warn: #b45309; --warn-bg: #fef3e2;
+  --danger: #b42318; --danger-bg: #fdeeee;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121212; --surface: #1a1a1a; --border: #2c2c2a; --text: #f2f2ee; --muted: #9b9a93;
+    --accent: #35b893; --accent-bg: #113a30; --warn: #e3a008; --warn-bg: #3a2c0c;
+    --danger: #f87171; --danger-bg: #3a1414;
+  }
+}
+html, body { background: var(--bg); color: var(--text); }
+body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+
+@layer components {
+  .card { @apply rounded-xl border p-4; background: var(--surface); border-color: var(--border); }
+  .kpi-label { font-size: 12px; color: var(--muted); }
+  .kpi-value { font-size: 24px; font-weight: 600; margin-top: 4px; }
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed; background: var(--accent); color: white; }
+  .btn:hover:not(:disabled) { filter: brightness(1.08); }
+  .btn-outline { @apply btn; background: transparent; color: var(--text); border: 1px solid var(--border); }
+  .btn-outline:hover:not(:disabled) { background: var(--accent-bg); }
+  .input, .select { @apply w-full rounded-md px-3 py-2 text-sm outline-none; background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+  .input:focus, .select:focus { border-color: var(--accent); }
+  .label { @apply block text-xs mb-1; color: var(--muted); }
+  .badge { @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium; }
+  .badge-accent { @apply badge; background: var(--accent-bg); color: var(--accent); }
+  .badge-muted { @apply badge; background: var(--border); color: var(--muted); }
+  .badge-warn { @apply badge; background: var(--warn-bg); color: var(--warn); }
+  .badge-danger { @apply badge; background: var(--danger-bg); color: var(--danger); }
+  table.data { @apply w-full border-collapse text-sm; }
+  table.data th { @apply text-left font-medium px-2 py-2 text-xs; color: var(--muted); border-bottom: 1px solid var(--border); }
+  table.data td { @apply px-2 py-2; border-bottom: 1px solid var(--border); }
+  table.data tr:hover td { background: var(--accent-bg); }
+  .sidebar-link { @apply flex items-center gap-2 rounded-md px-3 py-2 text-sm; color: var(--muted); }
+  .sidebar-link:hover { background: var(--accent-bg); }
+  .sidebar-link.active { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+}
+</file>
+
+<file path="apps/web/app/layout.tsx">
+import type { Metadata } from "next";
+import "./globals.css";
+import { Sidebar } from "@/components/sidebar";
+import { StatusBanner } from "@/components/status-banner";
+
+export const metadata: Metadata = { title: "Pyro — PyrexxAI Lead Platform", description: "Lead sourcing platform for PyrexxAI" };
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        <div className="flex min-h-screen">
+          <Sidebar />
+          <div className="flex-1 min-w-0">
+            <StatusBanner />
+            <main className="p-6">{children}</main>
+          </div>
+        </div>
+      </body>
+    </html>
+  );
+}
+</file>
+
+<file path="apps/web/app/leads/leads-client.tsx">
+"use client";
+import { useEffect, useMemo, useState } from "react";
+
+interface Entity {
+  id: string; name?: string; phone?: string; domain?: string; address?: string;
+  niche: string[]; members: { source: string; sourceId: string }[]; signals: { type: string; value: unknown }[];
+}
+
+export function LeadsClient() {
+  const [entities, setEntities] = useState<Entity[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [niche, setNiche] = useState("all");
+  const [hasWebsite, setHasWebsite] = useState("any");
+  const [q, setQ] = useState("");
+  const [selected, setSelected] = useState<Entity | null>(null);
+
+  useEffect(() => {
+    fetch("/api/leads", { cache: "no-store" }).then((r) => r.json()).then((d) => { setEntities(d.entities ?? []); setLoading(false); });
+  }, []);
+
+  const niches = useMemo(() => ["all", ...Array.from(new Set(entities.flatMap((e) => e.niche)))], [entities]);
+  const filtered = useMemo(() => entities.filter((e) => {
+    if (niche !== "all" && !e.niche.includes(niche)) return false;
+    if (hasWebsite === "yes" && !e.domain) return false;
+    if (hasWebsite === "no" && e.domain) return false;
+    if (q && !(e.name ?? "").toLowerCase().includes(q.toLowerCase())) return false;
+    return true;
+  }), [entities, niche, hasWebsite, q]);
+
+  function exportCsv() {
+    const header = ["name", "phone", "domain", "address", "niche", "sources"];
+    const esc = (v: unknown) => { const s = v === undefined || v === null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+    const rows = filtered.map((e) => [e.name, e.phone, e.domain, e.address, e.niche.join("|"), e.members.map((m) => m.source).join("|")].map(esc).join(","));
+    const blob = new Blob([header.join(",") + "\n" + rows.join("\n")], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = "leads.csv"; a.click(); URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2 flex-wrap items-center">
+        <select className="select w-auto" value={niche} onChange={(e) => setNiche(e.target.value)}>
+          {niches.map((n) => <option key={n} value={n}>{n === "all" ? "Niche: All" : n}</option>)}
+        </select>
+        <select className="select w-auto" value={hasWebsite} onChange={(e) => setHasWebsite(e.target.value)}>
+          <option value="any">Has website: Any</option>
+          <option value="yes">Has website: Yes</option>
+          <option value="no">Has website: No</option>
+        </select>
+        <input className="input w-auto" placeholder="Search name…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <button className="btn-outline" onClick={exportCsv} disabled={!filtered.length}>Export CSV</button>
+        <span className="text-xs ml-auto" style={{ color: "var(--muted)" }}>{filtered.length} of {entities.length} leads</span>
+      </div>
+
+      <div className="grid grid-cols-[2fr_1fr] gap-4">
+        <div className="card">
+          {loading ? (
+            <p className="text-sm" style={{ color: "var(--muted)" }}>Loading…</p>
+          ) : filtered.length === 0 ? (
+            <p className="text-sm" style={{ color: "var(--muted)" }}>No leads yet. Run a source from Sources → GMaps.</p>
+          ) : (
+            <table className="data">
+              <thead><tr><th>Business</th><th>Phone</th><th>Website</th><th>Niche</th><th>Sources</th></tr></thead>
+              <tbody>
+                {filtered.map((e) => (
+                  <tr key={e.id} onClick={() => setSelected(e)} style={{ cursor: "pointer" }}>
+                    <td>{e.name ?? "—"}</td><td>{e.phone ?? "—"}</td><td>{e.domain ?? "—"}</td>
+                    <td>{e.niche.join(", ") || "—"}</td><td>{Array.from(new Set(e.members.map((m) => m.source))).join(", ")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+        <div className="card">
+          {selected ? (
+            <>
+              <b>{selected.name ?? "Unnamed lead"}</b>
+              <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>Signals</p>
+              <ul className="text-sm mt-1 space-y-1">
+                {selected.signals.length === 0 && <li style={{ color: "var(--muted)" }}>None recorded.</li>}
+                {selected.signals.map((s, i) => <li key={i}>{s.type}: {typeof s.value === "object" ? JSON.stringify(s.value) : String(s.value)}</li>)}
+              </ul>
+              <p className="text-xs mt-3" style={{ color: "var(--muted)" }}>Provenance</p>
+              <ul className="text-sm mt-1 space-y-1">
+                {selected.members.map((m, i) => <li key={i}>{m.source} · {m.sourceId}</li>)}
+              </ul>
+            </>
+          ) : (
+            <p className="text-sm" style={{ color: "var(--muted)" }}>Select a lead to see signals and provenance.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="apps/web/app/leads/page.tsx">
+import { LeadsClient } from "./leads-client";
+
+export default function LeadsPage() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-xl font-semibold">Leads</h1>
+        <p className="text-sm" style={{ color: "var(--muted)" }}>Resolved across every run and source.</p>
+      </div>
+      <LeadsClient />
+    </div>
+  );
+}
+</file>
+
+<file path="apps/web/app/overview/page.tsx">
+export const dynamic = "force-dynamic";
+import Link from "next/link";
+import { getStore } from "@/lib/store";
+import { isGmapsConfigured, isSupabaseConfigured } from "@/lib/config";
+import { StatusBadge } from "@/components/badge";
+import { relativeTime, money } from "@/lib/format";
+
+export default async function OverviewPage() {
+  const store = getStore();
+  const runs = await store.listRuns(10);
+  const today = new Date().toDateString();
+  const runsToday = runs.filter((r) => new Date(r.createdAt).toDateString() === today).length;
+  const totalLeads = runs.reduce((sum, r) => sum + (r.records ?? 0), 0);
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-xl font-semibold">Overview</h1>
+        <p className="text-sm" style={{ color: "var(--muted)" }}>Runs, budgets and source health.</p>
+      </div>
+
+      <div className="grid grid-cols-4 gap-4">
+        <div className="card"><div className="kpi-label">Runs today</div><div className="kpi-value">{runsToday}</div></div>
+        <div className="card"><div className="kpi-label">Leads (recent runs)</div><div className="kpi-value">{totalLeads}</div></div>
+        <div className="card"><div className="kpi-label">GMaps service</div><div className="kpi-value"><StatusBadge status={isGmapsConfigured() ? "active" : "failed"} /></div></div>
+        <div className="card"><div className="kpi-label">Storage backend</div><div className="kpi-value"><StatusBadge status={isSupabaseConfigured() ? "active" : "planned"} /> <span className="text-sm font-normal ml-1">{store.backend}</span></div></div>
+      </div>
+
+      <div className="card">
+        <div className="flex items-center justify-between mb-3">
+          <b className="text-sm">Recent runs</b>
+          <Link href="/runs" className="text-sm" style={{ color: "var(--accent)" }}>View all →</Link>
+        </div>
+        {runs.length === 0 ? (
+          <p className="text-sm" style={{ color: "var(--muted)" }}>No runs yet. Start one from Sources → GMaps.</p>
+        ) : (
+          <table className="data">
+            <thead><tr><th>Run</th><th>Source</th><th>Status</th><th>Records</th><th>Spend</th><th>Started</th></tr></thead>
+            <tbody>
+              {runs.map((r) => (
+                <tr key={r.id}>
+                  <td><Link href={`/runs/${r.id}`} style={{ color: "var(--accent)" }}>{r.id.slice(0, 8)}</Link></td>
+                  <td>{r.source}</td>
+                  <td><StatusBadge status={r.status} /></td>
+                  <td>{r.records}</td>
+                  <td>{money(r.spend)}</td>
+                  <td>{relativeTime(r.createdAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="apps/web/app/page.tsx">
+import { redirect } from "next/navigation";
+export default function Home() { redirect("/overview"); }
+</file>
+
+<file path="apps/web/app/runs/[id]/page.tsx">
+import { RunDetailClient } from "./run-detail-client";
+
+export default function RunDetailPage({ params }: { params: { id: string } }) {
+  return (
+    <div className="space-y-6">
+      <h1 className="text-xl font-semibold">Run detail</h1>
+      <RunDetailClient id={params.id} />
+    </div>
+  );
+}
+</file>
+
+<file path="apps/web/app/runs/[id]/run-detail-client.tsx">
+"use client";
+import { useEffect, useState } from "react";
+import { StatusBadge } from "@/components/badge";
+import { relativeTime, money } from "@/lib/format";
+
+interface RunRow { id: string; source: string; status: string; records: number; spend: Record<string, number>; error?: string | null; input: any; createdAt: string; startedAt?: string | null; finishedAt?: string | null; }
+interface Rec { source: string; sourceId: string; name?: string; phone?: string; website?: string; address?: string; signals: { type: string; value: unknown }[] }
+
+export function RunDetailClient({ id }: { id: string }) {
+  const [run, setRun] = useState<RunRow | null>(null);
+  const [records, setRecords] = useState<Rec[]>([]);
+  const [notFound, setNotFound] = useState(false);
+
+  const load = async () => {
+    const res = await fetch(`/api/runs/${id}`, { cache: "no-store" });
+    if (res.status === 404) { setNotFound(true); return; }
+    const data = await res.json();
+    setRun(data.run);
+    const recRes = await fetch(`/api/runs/${id}/records?limit=100`, { cache: "no-store" });
+    const recData = await recRes.json();
+    setRecords(recData.records ?? []);
+  };
+  useEffect(() => { load(); }, [id]);
+  useEffect(() => {
+    if (!run || run.status === "succeeded" || run.status === "failed" || run.status === "canceled") return;
+    const t = setInterval(load, 2000);
+    return () => clearInterval(t);
+  }, [run?.status]);
+
+  async function cancel() {
+    await fetch(`/api/runs/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "cancel" }) });
+    load();
+  }
+
+  if (notFound) return <p className="text-sm" style={{ color: "var(--danger)" }}>Run not found.</p>;
+  if (!run) return <p className="text-sm" style={{ color: "var(--muted)" }}>Loading…</p>;
+
+  return (
+    <div className="space-y-4">
+      <div className="card">
+        <div className="flex items-center justify-between">
+          <div>
+            <b>{run.source}</b> <span className="text-xs" style={{ color: "var(--muted)" }}>{run.id}</span>
+          </div>
+          <StatusBadge status={run.status} />
+        </div>
+        <div className="grid grid-cols-4 gap-3 mt-3">
+          <div className="card"><div className="kpi-label">Records</div><div className="kpi-value">{run.records}</div></div>
+          <div className="card"><div className="kpi-label">Spend</div><div className="kpi-value">{money(run.spend)}</div></div>
+          <div className="card"><div className="kpi-label">Started</div><div className="text-sm mt-1">{relativeTime(run.startedAt)}</div></div>
+          <div className="card"><div className="kpi-label">Finished</div><div className="text-sm mt-1">{relativeTime(run.finishedAt)}</div></div>
+        </div>
+        {run.error && <p className="text-sm mt-3" style={{ color: "var(--danger)" }}>{run.error}</p>}
+        <pre className="text-xs mt-3 p-2 rounded" style={{ background: "var(--accent-bg)", overflowX: "auto" }}>{JSON.stringify(run.input, null, 2)}</pre>
+        <div className="mt-3 flex gap-3 items-center">
+          {(run.status === "queued" || run.status === "running") && <button className="btn-outline" onClick={cancel}>Cancel</button>}
+          {run.status === "succeeded" && (
+            <>
+              <a className="btn-outline" href={`/api/runs/${run.id}/records?format=csv`}>Download CSV</a>
+              <a className="btn-outline" href={`/api/runs/${run.id}/records?format=jsonl`}>Download JSONL</a>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="card">
+        <b className="text-sm">Output (first {records.length})</b>
+        {records.length === 0 ? (
+          <p className="text-sm mt-2" style={{ color: "var(--muted)" }}>No records yet.</p>
+        ) : (
+          <table className="data mt-2">
+            <thead><tr><th>Name</th><th>Phone</th><th>Website</th><th>Address</th><th>Signals</th></tr></thead>
+            <tbody>
+              {records.map((r) => (
+                <tr key={r.sourceId}>
+                  <td>{r.name ?? "—"}</td><td>{r.phone ?? "—"}</td><td>{r.website ?? "—"}</td><td>{r.address ?? "—"}</td>
+                  <td>{r.signals.map((s) => s.type).join(", ") || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="apps/web/app/runs/page.tsx">
+export const dynamic = "force-dynamic";
+import Link from "next/link";
+import { getStore } from "@/lib/store";
+import { StatusBadge } from "@/components/badge";
+import { relativeTime, money } from "@/lib/format";
+
+export default async function RunsPage() {
+  const runs = await getStore().listRuns(200);
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-xl font-semibold">Runs</h1>
+        <p className="text-sm" style={{ color: "var(--muted)" }}>Every run across every source.</p>
+      </div>
+      <div className="card">
+        {runs.length === 0 ? (
+          <p className="text-sm" style={{ color: "var(--muted)" }}>No runs yet.</p>
+        ) : (
+          <table className="data">
+            <thead><tr><th>Run</th><th>Source</th><th>Status</th><th>Records</th><th>Spend</th><th>Started</th><th>Finished</th></tr></thead>
+            <tbody>
+              {runs.map((r) => (
+                <tr key={r.id}>
+                  <td><Link href={`/runs/${r.id}`} style={{ color: "var(--accent)" }}>{r.id.slice(0, 8)}</Link></td>
+                  <td>{r.source}</td>
+                  <td><StatusBadge status={r.status} /></td>
+                  <td>{r.records}</td>
+                  <td>{money(r.spend)}</td>
+                  <td>{relativeTime(r.createdAt)}</td>
+                  <td>{relativeTime(r.finishedAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="apps/web/app/settings/page.tsx">
+export const dynamic = "force-dynamic";
+import { isGmapsConfigured, isSupabaseConfigured, config } from "@/lib/config";
+import { getStore } from "@/lib/store";
+import { StatusBadge } from "@/components/badge";
+
+function Row({ label, ok, detail }: { label: string; ok: boolean; detail: string }) {
+  return (
+    <tr>
+      <td className="font-medium">{label}</td>
+      <td><StatusBadge status={ok ? "active" : "planned"} /></td>
+      <td className="text-sm" style={{ color: "var(--muted)" }}>{detail}</td>
+    </tr>
+  );
+}
+
+export default function SettingsPage() {
+  const gmaps = isGmapsConfigured();
+  const supabase = isSupabaseConfigured();
+  const store = getStore();
+  return (
+    <div className="space-y-6 max-w-3xl">
+      <div>
+        <h1 className="text-xl font-semibold">Settings</h1>
+        <p className="text-sm" style={{ color: "var(--muted)" }}>Configuration status. Values are set in <code>apps/web/.env.local</code> and are never shown here.</p>
+      </div>
+
+      <div className="card">
+        <table className="data">
+          <thead><tr><th>Setting</th><th>Status</th><th>Detail</th></tr></thead>
+          <tbody>
+            <Row label="GMAPS_SERVICE_URL" ok={gmaps} detail={gmaps ? config.gmapsServiceUrl : "Set this to the deployed scraper's Cloud Run URL to enable runs."} />
+            <Row label="GMAPS_SERVICE_TOKEN" ok={Boolean(config.gmapsServiceToken)} detail={config.gmapsServiceToken ? "Set (value hidden)" : "Optional — only needed if the scraper checks a bearer token."} />
+            <Row label="SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY" ok={supabase} detail={supabase ? "Set (values hidden)" : "Both unset — using local file storage instead."} />
+            <Row label="Active storage backend" ok={true} detail={store.backend === "file" ? "file (apps/web/.data/)" : "supabase"} />
+          </tbody>
+        </table>
+      </div>
+
+      <div className="card text-sm space-y-2" style={{ color: "var(--muted)" }}>
+        <p><b style={{ color: "var(--text)" }}>Without Supabase:</b> runs and leads persist to JSON/JSONL files under <code>apps/web/.data/</code>. This is correct for a single local process (dev or one `next start`) and is lost if you delete that folder. It is not safe for multiple instances.</p>
+        <p><b style={{ color: "var(--text)" }}>Without GMAPS_SERVICE_URL:</b> the GMaps source page still loads; runs will be created and immediately marked failed with a clear error.</p>
+        <p>See <code>SETUP.md</code> at the repo root for full provisioning steps.</p>
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="apps/web/app/sources/gmaps/gmaps-client.tsx">
+"use client";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { StatusBadge } from "@/components/badge";
+import { relativeTime } from "@/lib/format";
+
+interface RunRow { id: string; status: string; records: number; error?: string | null; createdAt: string; input: any }
+
+export function GmapsClient({ gmapsConfigured }: { gmapsConfigured: boolean }) {
+  const [city, setCity] = useState("Columbus, OH");
+  const [keyword, setKeyword] = useState("med spa");
+  const [radius, setRadius] = useState(3000);
+  const [areas, setAreas] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [runs, setRuns] = useState<RunRow[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = async () => {
+    const res = await fetch("/api/runs?source=gmaps", { cache: "no-store" });
+    const data = await res.json();
+    setRuns(data.runs ?? []);
+  };
+  useEffect(() => { refresh(); }, []);
+  useEffect(() => {
+    const active = runs.find((r) => r.id === activeId);
+    if (!active || active.status === "succeeded" || active.status === "failed" || active.status === "canceled") return;
+    const t = setInterval(refresh, 2000);
+    return () => clearInterval(t);
+  }, [activeId, runs]);
+
+  const active = runs.find((r) => r.id === activeId) ?? runs[0];
+
+  async function submit() {
+    setSubmitting(true); setError(null);
+    try {
+      const body = { source: "gmaps", input: { city, keyword, radius, areas: areas.split(",").map((a) => a.trim()).filter(Boolean) || undefined } };
+      const res = await fetch("/api/runs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to start run");
+      setActiveId(data.run.id);
+      await refresh();
+    } catch (e: any) { setError(e.message); } finally { setSubmitting(false); }
+  }
+
+  return (
+    <div className="grid grid-cols-[1fr_1.4fr] gap-4">
+      <div className="card space-y-3">
+        <b>New run</b>
+        <div>
+          <label className="label">City, State</label>
+          <input className="input" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Columbus, OH" />
+        </div>
+        <div>
+          <label className="label">Niche / keyword</label>
+          <input className="input" value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="med spa" />
+        </div>
+        <div>
+          <label className="label">Radius (meters)</label>
+          <input className="input" type="number" value={radius} onChange={(e) => setRadius(Number(e.target.value))} />
+        </div>
+        <div>
+          <label className="label">Named areas (optional, comma-separated — skips grid search)</label>
+          <input className="input" value={areas} onChange={(e) => setAreas(e.target.value)} placeholder="Short North, Clintonville" />
+        </div>
+        {!gmapsConfigured && (
+          <p className="text-xs" style={{ color: "var(--warn)" }}>GMAPS_SERVICE_URL is not set — this run will start but fail immediately. See Settings.</p>
+        )}
+        {error && <p className="text-xs" style={{ color: "var(--danger)" }}>{error}</p>}
+        <button className="btn" onClick={submit} disabled={submitting || !city || !keyword}>
+          {submitting ? "Starting…" : "Start run"}
+        </button>
+      </div>
+
+      <div className="space-y-4">
+        {active ? (
+          <div className="card">
+            <div className="flex items-center justify-between">
+              <b className="text-sm">Run {active.id.slice(0, 8)}</b>
+              <StatusBadge status={active.status} />
+            </div>
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              <div className="card"><div className="kpi-label">Records</div><div className="kpi-value">{active.records}</div></div>
+              <div className="card"><div className="kpi-label">Input</div><div className="text-xs mt-1" style={{ color: "var(--muted)" }}>{active.input?.city} · {active.input?.keyword}</div></div>
+            </div>
+            {active.error && <p className="text-xs mt-3" style={{ color: "var(--danger)" }}>{active.error}</p>}
+            {active.status === "succeeded" && (
+              <div className="mt-3 text-sm space-x-3">
+                <a className="underline" style={{ color: "var(--accent)" }} href={`/api/runs/${active.id}/records?format=csv`}>Download CSV</a>
+                <a className="underline" style={{ color: "var(--accent)" }} href={`/api/runs/${active.id}/records?format=jsonl`}>Download JSONL</a>
+              </div>
+            )}
+            <Link href={`/runs/${active.id}`} className="text-xs mt-3 inline-block" style={{ color: "var(--accent)" }}>Open run detail →</Link>
+          </div>
+        ) : (
+          <div className="card text-sm" style={{ color: "var(--muted)" }}>No runs yet for this source.</div>
+        )}
+
+        <div className="card">
+          <b className="text-sm">Recent GMaps runs</b>
+          <table className="data mt-2">
+            <thead><tr><th>Run</th><th>Status</th><th>Records</th><th>Started</th></tr></thead>
+            <tbody>
+              {runs.map((r) => (
+                <tr key={r.id} onClick={() => setActiveId(r.id)} style={{ cursor: "pointer" }}>
+                  <td>{r.id.slice(0, 8)}</td>
+                  <td><StatusBadge status={r.status} /></td>
+                  <td>{r.records}</td>
+                  <td>{relativeTime(r.createdAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="apps/web/app/sources/gmaps/page.tsx">
+import { isGmapsConfigured } from "@/lib/config";
+import { GmapsClient } from "./gmaps-client";
+
+export default function GmapsPage() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-xl font-semibold">GMaps source</h1>
+        <p className="text-sm" style={{ color: "var(--muted)" }}>
+          Calls the already-deployed scraper service over HTTP and persists what it returns. The scraper's own code is not part of Pyro.
+        </p>
+      </div>
+      <GmapsClient gmapsConfigured={isGmapsConfigured()} />
+    </div>
+  );
+}
+</file>
+
+<file path="apps/web/app/sources/page.tsx">
+import Link from "next/link";
+import { StatusBadge } from "@/components/badge";
+
+const sources = [
+  { id: "gmaps", name: "GMaps", desc: "Business discovery by city and niche, calling the deployed scraper service.", status: "active", href: "/sources/gmaps" },
+  { id: "nppes", name: "NPPES", desc: "Provider registry — API then bulk file.", status: "planned" },
+  { id: "website", name: "Website enrichment", desc: "Emails, socials, booking/chat widgets.", status: "planned" },
+  { id: "ads", name: "Ads Transparency", desc: "Ad activity by domain.", status: "planned" },
+  { id: "directories", name: "Directories", desc: "Psychology Today groups and more.", status: "planned" },
+  { id: "cms", name: "CMS Doctors & Clinicians", desc: "Group practice and size.", status: "planned" },
+];
+
+export default function SourcesPage() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-xl font-semibold">Sources</h1>
+        <p className="text-sm" style={{ color: "var(--muted)" }}>Each source is an independently built, testable module.</p>
+      </div>
+      <div className="grid grid-cols-3 gap-4">
+        {sources.map((s) => (
+          <div className="card flex flex-col" key={s.id}>
+            <div className="flex items-center justify-between">
+              <b>{s.name}</b>
+              <StatusBadge status={s.status} />
+            </div>
+            <p className="text-sm mt-2 flex-1" style={{ color: "var(--muted)" }}>{s.desc}</p>
+            <div className="mt-4">
+              {s.href ? (
+                <Link href={s.href} className="btn">Open</Link>
+              ) : (
+                <button className="btn-outline" disabled>Not built yet</button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="apps/web/components/badge.tsx">
+const map: Record<string, string> = {
+  queued: "badge-muted", running: "badge-accent", succeeded: "badge-accent",
+  failed: "badge-danger", canceled: "badge-warn", active: "badge-accent", planned: "badge-muted",
+};
+export function StatusBadge({ status }: { status: string }) {
+  return <span className={map[status] ?? "badge-muted"}>{status}</span>;
+}
+</file>
+
+<file path="apps/web/components/sidebar.tsx">
+"use client";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+const items = [
+  { href: "/overview", label: "Overview" },
+  { href: "/sources", label: "Sources" },
+  { href: "/runs", label: "Runs" },
+  { href: "/leads", label: "Leads" },
+  { href: "/settings", label: "Settings" },
+];
+
+export function Sidebar() {
+  const pathname = usePathname();
+  return (
+    <div className="w-56 shrink-0 border-r p-4" style={{ borderColor: "var(--border)" }}>
+      <div className="px-2 pb-6">
+        <div className="text-base font-semibold">Pyro</div>
+        <div className="text-xs" style={{ color: "var(--muted)" }}>PyrexxAI lead platform</div>
+      </div>
+      <nav className="space-y-1">
+        {items.map((it) => {
+          const active = pathname === it.href || (it.href !== "/overview" && pathname?.startsWith(it.href));
+          return (
+            <Link key={it.href} href={it.href} className={`sidebar-link ${active ? "active" : ""}`}>
+              {it.label}
+            </Link>
+          );
+        })}
+      </nav>
+    </div>
+  );
+}
+</file>
+
+<file path="apps/web/components/status-banner.tsx">
+import { isGmapsConfigured, isSupabaseConfigured } from "@/lib/config";
+
+export function StatusBanner() {
+  const gmaps = isGmapsConfigured();
+  const supabase = isSupabaseConfigured();
+  if (gmaps && supabase) return null;
+  return (
+    <div className="px-6 pt-4 space-y-2">
+      {!gmaps && (
+        <div className="card" style={{ borderColor: "var(--warn)", background: "var(--warn-bg)" }}>
+          <span className="text-sm" style={{ color: "var(--warn)" }}>
+            GMAPS_SERVICE_URL is not set. Sources &rarr; GMaps will accept runs but every run will fail until it's configured in <code>.env.local</code>. See Settings.
+          </span>
+        </div>
+      )}
+      {!supabase && (
+        <div className="card">
+          <span className="text-sm" style={{ color: "var(--muted)" }}>
+            Running on local file storage (<code>apps/web/.data/</code>) — Supabase isn't configured. Runs and leads still work; data stays on this machine and resets if you delete <code>.data/</code>. See Settings.
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+</file>
+
+<file path="apps/web/lib/config.ts">
+/** Central place every other module reads config from. No other file should touch process.env directly. */
+export const config = {
+  gmapsServiceUrl: (process.env.GMAPS_SERVICE_URL ?? "").trim(),
+  gmapsServiceToken: (process.env.GMAPS_SERVICE_TOKEN ?? "").trim(),
+  supabaseUrl: (process.env.SUPABASE_URL ?? "").trim(),
+  supabaseServiceRoleKey: (process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim(),
+};
+export const isGmapsConfigured = () => config.gmapsServiceUrl.length > 0;
+export const isSupabaseConfigured = () => config.supabaseUrl.length > 0 && config.supabaseServiceRoleKey.length > 0;
+</file>
+
+<file path="apps/web/lib/csv.ts">
+import { CSV_HEADER, toCsvRow, SourceRecordSchema } from "@leads/core";
+import type { NormalizedRecord } from "./store/types";
+export function toCsv(records: NormalizedRecord[]): string {
+  const rows = records.map((r) => toCsvRow(SourceRecordSchema.parse({ ...r, sourceId: r.sourceId })));
+  return CSV_HEADER.join(",") + "\n" + rows.map((l) => l + "\n").join("");
+}
+</file>
+
+<file path="apps/web/lib/format.ts">
+export function relativeTime(iso?: string | null): string {
+  if (!iso) return "—";
+  const ms = Date.now() - new Date(iso).getTime();
+  const s = Math.round(ms / 1000);
+  if (s < 5) return "just now";
+  if (s < 60) return `${s}s ago`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return new Date(iso).toLocaleDateString();
+}
+export function money(spend: Record<string, number>): string {
+  const total = Object.values(spend ?? {}).reduce((a, b) => a + b, 0);
+  return total ? `$${total.toFixed(2)}` : "$0.00";
+}
+</file>
+
+<file path="apps/web/lib/runner.ts">
+import { Budget, runAdapter, type RunStore as CoreRunStore, type Sink } from "@leads/core";
+import { createGmapsLegacy } from "@leads/source-gmaps";
+import { config, isGmapsConfigured } from "./config";
+import { getStore } from "./store";
+import type { LeadStore, NormalizedRecord } from "./store/types";
+
+export interface GmapsRunInput { city: string; keyword: string; radius?: number; areas?: string[] }
+
+function asCoreRunStore(store: LeadStore): CoreRunStore {
+  return {
+    async start(runId) { await store.updateRun(runId, { status: "running", startedAt: new Date().toISOString(), heartbeatAt: new Date().toISOString() }); },
+    async progress(runId, p) { await store.updateRun(runId, { records: p.records, spend: p.spend, heartbeatAt: new Date().toISOString() }); },
+    async finish(summary) {
+      await store.updateRun(summary.runId, {
+        status: summary.status, records: summary.records, spend: summary.spend,
+        error: summary.error ?? null, finishedAt: new Date().toISOString(),
+      });
+    },
+    async isCancelRequested(runId) { return Boolean((await store.getRun(runId))?.cancelRequested); },
+  };
+}
+function asSink(store: LeadStore, runId: string): Sink {
+  return { async write(records) { await store.appendRecords(runId, records as NormalizedRecord[]); }, async close() {} };
+}
+
+/** Runs in the current Node process (not a serverless/edge function) -- see README "Known limits". */
+const inFlight = new Set<string>();
+export const isRunInFlight = (id: string) => inFlight.has(id);
+
+export async function startGmapsRun(input: GmapsRunInput) {
+  const store = getStore();
+  const row = await store.createRun({ source: "gmaps", input });
+
+  if (!isGmapsConfigured()) {
+    await store.updateRun(row.id, { status: "failed", error: "GMAPS_SERVICE_URL is not set. Add it in .env.local (see Settings)." });
+    return row;
+  }
+  const adapter = createGmapsLegacy({ baseUrl: config.gmapsServiceUrl, token: config.gmapsServiceToken || undefined });
+  inFlight.add(row.id);
+  runAdapter(adapter, input, {
+    runId: row.id,
+    budget: new Budget(),
+    store: asCoreRunStore(store),
+    sinks: [asSink(store, row.id)],
+    log: (m, d) => console.log(`[run ${row.id}] ${m}`, d ?? ""),
+  })
+    .catch((e) => console.error(`[run ${row.id}] crashed`, e))
+    .finally(() => inFlight.delete(row.id));
+
+  return row;
+}
+</file>
+
+<file path="apps/web/lib/store/file-store.ts">
+import { mkdir, readFile, writeFile, appendFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { dirname, join } from "node:path";
+import type { LeadStore, NormalizedRecord, RunRow } from "./types";
+
+/**
+ * Local, zero-config backend. Data lives under apps/web/.data/ as plain JSON/JSONL files.
+ * Writes are serialized per file with a tiny in-process mutex -- correct for a single Node
+ * process (next dev / next start), not for multiple instances. That's the explicit trade for
+ * running with no database until Supabase is wired up (see README "Known limits").
+ */
+const DATA_DIR = join(process.cwd(), ".data");
+const RUNS_FILE = join(DATA_DIR, "runs.json");
+const recordsFile = (runId: string) => join(DATA_DIR, "records", `${runId}.jsonl`);
+
+const locks = new Map<string, Promise<unknown>>();
+function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const prev = locks.get(key) ?? Promise.resolve();
+  const next = prev.then(fn, fn);
+  locks.set(key, next.then(() => undefined, () => undefined));
+  return next;
+}
+
+async function readRuns(): Promise<Record<string, RunRow>> {
+  if (!existsSync(RUNS_FILE)) return {};
+  try { return JSON.parse(await readFile(RUNS_FILE, "utf8")); } catch { return {}; }
+}
+async function writeRuns(runs: Record<string, RunRow>) {
+  await mkdir(dirname(RUNS_FILE), { recursive: true });
+  await writeFile(RUNS_FILE, JSON.stringify(runs, null, 2));
+}
+
+export class FileStore implements LeadStore {
+  readonly backend = "file" as const;
+
+  async createRun(row: { source: string; input: unknown }): Promise<RunRow> {
+    return withLock("runs", async () => {
+      const runs = await readRuns();
+      const id = randomUUID();
+      const r: RunRow = {
+        id, source: row.source, input: row.input, status: "queued", records: 0, spend: {},
+        error: null, artifacts: [], cancelRequested: false, createdAt: new Date().toISOString(),
+        startedAt: null, finishedAt: null, heartbeatAt: null,
+      };
+      runs[id] = r;
+      await writeRuns(runs);
+      return r;
+    });
+  }
+  async getRun(id: string) { return (await readRuns())[id] ?? null; }
+  async listRuns(limit = 100) {
+    const runs = Object.values(await readRuns());
+    return runs.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit);
+  }
+  async updateRun(id: string, patch: Partial<RunRow>) {
+    return withLock("runs", async () => {
+      const runs = await readRuns();
+      if (!runs[id]) return;
+      runs[id] = { ...runs[id], ...patch };
+      await writeRuns(runs);
+    });
+  }
+  async appendRecords(runId: string, records: NormalizedRecord[]) {
+    if (!records.length) return;
+    const path = recordsFile(runId);
+    return withLock(path, async () => {
+      await mkdir(dirname(path), { recursive: true });
+      await appendFile(path, records.map((r) => JSON.stringify(r)).join("\n") + "\n");
+    });
+  }
+  async listRecords(runId: string, limit = 5000) {
+    const path = recordsFile(runId);
+    if (!existsSync(path)) return [];
+    const text = await readFile(path, "utf8");
+    const lines = text.split("\n").filter(Boolean);
+    return lines.slice(0, limit).map((l) => JSON.parse(l) as NormalizedRecord);
+  }
+  async listAllRecords(limit = 2000) {
+    const runs = await this.listRuns(500);
+    const out: NormalizedRecord[] = [];
+    for (const r of runs) {
+      if (out.length >= limit) break;
+      out.push(...(await this.listRecords(r.id, limit - out.length)));
+    }
+    return out;
+  }
+  async requestCancel(id: string) { await this.updateRun(id, { cancelRequested: true }); }
+}
+</file>
+
+<file path="apps/web/lib/store/index.ts">
+import { isSupabaseConfigured } from "../config";
+import { FileStore } from "./file-store";
+import { SupabaseStore } from "./supabase-store";
+import type { LeadStore } from "./types";
+
+export * from "./types";
+
+let instance: LeadStore | null = null;
+/** Picks the backend once per process, at first use (not at import time, so env is read lazily). */
+export function getStore(): LeadStore {
+  if (!instance) instance = isSupabaseConfigured() ? new SupabaseStore() : new FileStore();
+  return instance;
+}
+</file>
+
+<file path="apps/web/lib/store/supabase-store.ts">
+import { randomUUID } from "node:crypto";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { config } from "../config";
+import type { LeadStore, NormalizedRecord, RunRow, RunStatus } from "./types";
+
+function toRow(r: any): RunRow {
+  return {
+    id: r.id, source: r.source, input: r.input, status: r.status as RunStatus,
+    records: r.records ?? 0, spend: r.spend ?? {}, error: r.error ?? null,
+    artifacts: r.artifacts ?? [], cancelRequested: Boolean(r.cancel_requested),
+    createdAt: r.created_at, startedAt: r.started_at, finishedAt: r.finished_at, heartbeatAt: r.heartbeat_at,
+  };
+}
+function fromNormalized(run_id: string, x: any): { run_id: string; source: string; source_id: string; payload: unknown; normalized: unknown } {
+  return { run_id, source: x.source, source_id: x.source_id, payload: x.payload, normalized: x.normalized };
+}
+function toNormalized(row: any): NormalizedRecord {
+  const n = row.normalized ?? {};
+  return {
+    source: row.source, sourceId: row.source_id, payload: row.payload ?? {},
+    name: n.name, phone: n.phone, website: n.website, address: n.address, lat: n.lat, lng: n.lng,
+    niche: n.niche ?? [], signals: n.signals ?? [],
+  };
+}
+
+/** Matches supabase/migrations/0001_init.sql (runs, raw_records). Uses the service role key (server-only). */
+export class SupabaseStore implements LeadStore {
+  readonly backend = "supabase" as const;
+  private db: SupabaseClient;
+  constructor() { this.db = createClient(config.supabaseUrl, config.supabaseServiceRoleKey, { auth: { persistSession: false } }); }
+
+  async createRun(row: { source: string; input: unknown }): Promise<RunRow> {
+    const id = randomUUID();
+    const { error } = await this.db.from("runs").insert({ id, source: row.source, input: row.input, status: "queued" });
+    if (error) throw new Error(`createRun: ${error.message}`);
+    return { id, source: row.source, input: row.input, status: "queued", records: 0, spend: {}, error: null, artifacts: [], cancelRequested: false, createdAt: new Date().toISOString() };
+  }
+  async getRun(id: string) {
+    const { data, error } = await this.db.from("runs").select("*").eq("id", id).maybeSingle();
+    if (error) throw new Error(`getRun: ${error.message}`);
+    return data ? toRow(data) : null;
+  }
+  async listRuns(limit = 100) {
+    const { data, error } = await this.db.from("runs").select("*").order("created_at", { ascending: false }).limit(limit);
+    if (error) throw new Error(`listRuns: ${error.message}`);
+    return (data ?? []).map(toRow);
+  }
+  async updateRun(id: string, patch: Partial<RunRow>) {
+    const row: Record<string, unknown> = {};
+    if (patch.status !== undefined) row.status = patch.status;
+    if (patch.records !== undefined) row.records = patch.records;
+    if (patch.spend !== undefined) row.spend = patch.spend;
+    if (patch.error !== undefined) row.error = patch.error;
+    if (patch.artifacts !== undefined) row.artifacts = patch.artifacts;
+    if (patch.cancelRequested !== undefined) row.cancel_requested = patch.cancelRequested;
+    if (patch.startedAt !== undefined) row.started_at = patch.startedAt;
+    if (patch.finishedAt !== undefined) row.finished_at = patch.finishedAt;
+    if (patch.heartbeatAt !== undefined) row.heartbeat_at = patch.heartbeatAt;
+    const { error } = await this.db.from("runs").update(row).eq("id", id);
+    if (error) throw new Error(`updateRun: ${error.message}`);
+  }
+  async appendRecords(runId: string, records: NormalizedRecord[]) {
+    if (!records.length) return;
+    const rows = records.map((r) => fromNormalized(runId, { source: r.source, source_id: r.sourceId, payload: r.payload, normalized: { name: r.name, phone: r.phone, website: r.website, address: r.address, lat: r.lat, lng: r.lng, niche: r.niche, signals: r.signals } }));
+    const { error } = await this.db.from("raw_records").upsert(rows, { onConflict: "run_id,source,source_id" });
+    if (error) throw new Error(`appendRecords: ${error.message}`);
+  }
+  async listRecords(runId: string, limit = 5000) {
+    const { data, error } = await this.db.from("raw_records").select("*").eq("run_id", runId).limit(limit);
+    if (error) throw new Error(`listRecords: ${error.message}`);
+    return (data ?? []).map(toNormalized);
+  }
+  async listAllRecords(limit = 2000) {
+    const { data, error } = await this.db.from("raw_records").select("*").order("fetched_at", { ascending: false }).limit(limit);
+    if (error) throw new Error(`listAllRecords: ${error.message}`);
+    return (data ?? []).map(toNormalized);
+  }
+  async requestCancel(id: string) {
+    const { error } = await this.db.from("runs").update({ cancel_requested: true }).eq("id", id);
+    if (error) throw new Error(`requestCancel: ${error.message}`);
+  }
+}
+</file>
+
+<file path="apps/web/lib/store/types.ts">
+export type RunStatus = "queued" | "running" | "succeeded" | "failed" | "canceled";
+
+export interface RunRow {
+  id: string;
+  source: string;
+  input: unknown;
+  status: RunStatus;
+  records: number;
+  spend: Record<string, number>;
+  error?: string | null;
+  artifacts: { name: string; bytes?: number; path?: string }[];
+  cancelRequested: boolean;
+  createdAt: string;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  heartbeatAt?: string | null;
+}
+
+export interface Signal { type: string; value: unknown }
+
+export interface NormalizedRecord {
+  source: string;
+  sourceId: string;
+  payload: Record<string, unknown>;
+  name?: string;
+  phone?: string;
+  website?: string;
+  address?: string;
+  lat?: number;
+  lng?: number;
+  niche: string[];
+  signals: Signal[];
+}
+
+/** Every page/route goes through this interface. Swapping backends never touches UI or API route code. */
+export interface LeadStore {
+  readonly backend: "file" | "supabase";
+  createRun(row: { source: string; input: unknown }): Promise<RunRow>;
+  getRun(id: string): Promise<RunRow | null>;
+  listRuns(limit?: number): Promise<RunRow[]>;
+  updateRun(id: string, patch: Partial<RunRow>): Promise<void>;
+  appendRecords(runId: string, records: NormalizedRecord[]): Promise<void>;
+  listRecords(runId: string, limit?: number): Promise<NormalizedRecord[]>;
+  listAllRecords(limit?: number): Promise<NormalizedRecord[]>;
+  requestCancel(runId: string): Promise<void>;
+}
+</file>
+
+<file path="apps/web/next-env.d.ts">
+/// <reference types="next" />
+/// <reference types="next/image-types/global" />
+
+// NOTE: This file should not be edited
+// see https://nextjs.org/docs/app/building-your-application/configuring/typescript for more information.
+</file>
+
+<file path="apps/web/next.config.mjs">
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  reactStrictMode: true,
+  // sources/* and packages/* are workspace TS packages (no build step), so webpack must transpile them.
+  transpilePackages: ["@leads/core", "@leads/source-gmaps"],
+  eslint: { ignoreDuringBuilds: true },
+};
+export default nextConfig;
+</file>
+
+<file path="apps/web/package.json">
+{
+  "name": "@leads/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@leads/core": "*",
+    "@leads/source-gmaps": "*",
+    "@supabase/supabase-js": "^2.45.0",
+    "next": "^14.2.15",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.13",
+    "typescript": "^5.6.0"
+  }
+}
+</file>
+
+<file path="apps/web/postcss.config.mjs">
+export default { plugins: { tailwindcss: {}, autoprefixer: {} } };
+</file>
+
+<file path="apps/web/tailwind.config.ts">
+import type { Config } from "tailwindcss";
+export default {
+  darkMode: "media",
+  content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"],
+} satisfies Config;
+</file>
+
+<file path="apps/web/tsconfig.json">
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "dom.iterable", "ES2022"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [{ "name": "next" }],
+    "paths": { "@/*": ["./*"] }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}
+</file>
+
+<file path="docs/PHASE0.md">
+# Phase 0 — security hotfix (do before any deploy)
+
+You must do these yourself; they need your Google Cloud and git access.
+
+1. **Rotate the Google API key** that appeared in `.env.example` of the old scraper. Create a new key, delete the old one.
+2. **Restrict the new key**: API restriction = only the APIs you use (Places API (New), Geocoding); add an application restriction where possible.
+3. **Cap quota**: Cloud Console > APIs & Services > Quotas, set daily caps per API; add a billing budget alert.
+4. **Purge git history** if the old repo was ever pushed (`git filter-repo` or BFG), then force-push and treat the old key as burned regardless.
+5. **Lock the Cloud Run service**: remove `allUsers` from the invoker role; callers authenticate with IAM / an ID token.
+6. **Review `deploy-scraper.bat`** and every committed file for secrets; move secrets to Secret Manager.
+7. Update the old `.env.example` to blank placeholders (see this repo's `.env.example`).
+</file>
+
+<file path="package.json">
+{
+  "name": "lead-platform",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "sources/*"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lead": "tsx packages/cli/src/index.ts",
+    "dev:web": "npm run dev --workspace apps/web",
+    "build:web": "npm run build --workspace apps/web"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "tsx": "^4.19.0",
+    "vitest": "^2.1.0",
+    "@types/node": "^22.0.0"
+  }
+}
+</file>
+
+<file path="packages/cli/package.json">
+{
+  "name": "@leads/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {
+    "@leads/core": "*",
+    "@leads/source-echo": "*",
+    "@leads/source-gmaps": "*"
+  }
+}
+</file>
+
+<file path="packages/cli/src/index.ts">
+import { readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { Budget, CsvSink, JsonlSink, runAdapter, type Adapter } from "@leads/core";
+import { echo } from "@leads/source-echo";
+import { gmapsLegacy } from "@leads/source-gmaps";
+
+const registry: Record<string, Adapter> = { [echo.manifest.id]: echo, [gmapsLegacy.manifest.id]: gmapsLegacy };
+const [cmd, source, ...rest] = process.argv.slice(2);
+const flag = (n: string) => { const i = rest.indexOf("--" + n); return i >= 0 ? rest[i + 1] : undefined; };
+
+if (cmd !== "run" || !source || !registry[source]) {
+  console.error(`usage: lead run <${Object.keys(registry).join("|")}> [--input '<json>'|@file] [--out dir] [--max n]`);
+  process.exit(2);
+}
+const raw = flag("input") ?? "{}";
+const input = JSON.parse(raw.startsWith("@") ? readFileSync(raw.slice(1), "utf8") : raw);
+const runId = randomUUID(), out = flag("out") ?? "./out";
+const budget = new Budget(JSON.parse(process.env.BUDGET_CAPS ?? "{}"));
+const summary = await runAdapter(registry[source]!, input, {
+  runId, budget, maxRecords: flag("max") ? Number(flag("max")) : undefined,
+  sinks: [new CsvSink(`${out}/${runId}/${source}.csv`), new JsonlSink(`${out}/${runId}/${source}.jsonl`)],
+  log: (m, d) => console.error(m, d ?? ""),
+});
+console.log(JSON.stringify(summary, null, 2));
+process.exit(summary.status === "succeeded" ? 0 : 1);
+</file>
+
+<file path="packages/core/package.json">
+{ "name": "@leads/core", "version": "0.1.0", "type": "module", "main": "./src/index.ts", "dependencies": { "zod": "^3.23.8" } }
+</file>
+
+<file path="packages/core/src/budget.ts">
+export class BudgetExceeded extends Error {
+  constructor(public key: string, public requested: number, public remaining: number) {
+    super(`Budget exceeded for "${key}": requested ${requested}, remaining ${remaining}`);
+  }
+}
+/** Hard-stop budget guard. Strict by default: a cost unit with no cap has zero allowance. */
+export class Budget {
+  private used = new Map<string, number>();
+  constructor(private caps: Record<string, number> = {}, private strict = true) {}
+  remaining(key: string): number {
+    const cap = this.caps[key];
+    if (cap === undefined) return this.strict ? 0 : Infinity;
+    return cap - (this.used.get(key) ?? 0);
+  }
+  canAfford(units: Record<string, number>): boolean {
+    return Object.entries(units).every(([k, n]) => n <= 0 || n <= this.remaining(k));
+  }
+  spend(key: string, n: number): void {
+    if (n <= 0) return;
+    const rem = this.remaining(key);
+    if (n > rem) throw new BudgetExceeded(key, n, rem);
+    this.used.set(key, (this.used.get(key) ?? 0) + n);
+  }
+  snapshot(): Record<string, number> { return Object.fromEntries(this.used); }
+}
+</file>
+
+<file path="packages/core/src/core.test.ts">
+import { describe, expect, it } from "vitest";
+import { z } from "zod";
+import { Budget, BudgetExceeded, MemorySink, MemoryRunStore, SupabaseRunStore, SupabaseSink, resolve, runAdapter, toCsvRow, normalizePhone, normalizeDomain, SourceRecordSchema, type Adapter } from "./index";
+
+const mk = (over: Partial<Adapter> & { n?: number } = {}): Adapter => ({
+  manifest: { id: "t", version: "1.0.0", role: "discovery", worker: "light", inputSchema: z.object({}) },
+  estimateCost: () => ({ units: {}, usd: 0 }),
+  async *run(_i, ctx) { for (let i = 0; i < (over.n ?? 250); i++) { if (ctx.signal.aborted) return; yield { source: "t", sourceId: String(i), payload: {} }; } },
+  ...over,
+});
+
+describe("normalize", () => {
+  it("phones", () => { expect(normalizePhone("(614) 555-0101")).toBe("+16145550101"); expect(normalizePhone("1-614-555-0101")).toBe("+16145550101"); expect(normalizePhone("123")).toBeUndefined(); });
+  it("domains", () => { expect(normalizeDomain("https://www.Foo.com/a?b")).toBe("foo.com"); expect(normalizeDomain("nope")).toBeUndefined(); });
+});
+describe("resolver", () => {
+  const rec = (o: object) => SourceRecordSchema.parse({ source: "s", sourceId: Math.random().toString(), payload: {}, ...o });
+  it("merges on phone and ignores generic domains", () => {
+    const e = resolve([rec({ name: "A", phone: "614-555-0101", website: "https://facebook.com/a" }), rec({ phone: "+1 (614) 555-0101", website: "https://facebook.com/b" }), rec({ name: "C", website: "https://facebook.com/c" })]);
+    expect(e).toHaveLength(2);
+  });
+  it("merges on domain across sources", () => { expect(resolve([rec({ website: "https://a.com" }), rec({ website: "http://www.a.com/x" })])).toHaveLength(1); });
+});
+describe("budget", () => {
+  it("is strict by default and hard-stops", () => {
+    const b = new Budget({ x: 5 }); b.spend("x", 5);
+    expect(() => b.spend("x", 1)).toThrow(BudgetExceeded);
+    expect(() => b.spend("unknown", 1)).toThrow(BudgetExceeded);
+  });
+});
+describe("csv", () => { it("escapes", () => { expect(toCsvRow(SourceRecordSchema.parse({ source: "s", sourceId: "1", payload: {}, name: 'A, "B"' }))).toContain('"A, ""B"""'); }); });
+describe("runner", () => {
+  it("batches, counts and persists", async () => {
+    const sink = new MemorySink(), store = new MemoryRunStore();
+    const s = await runAdapter(mk(), {}, { runId: "r1", sinks: [sink], store, batchSize: 100 });
+    expect(s.status).toBe("succeeded"); expect(sink.records).toHaveLength(250); expect(store.last?.records).toBe(250);
+  });
+  it("honors maxRecords", async () => { expect((await runAdapter(mk(), {}, { runId: "r", maxRecords: 7 })).records).toBe(7); });
+  it("refuses over-budget runs before starting", async () => {
+    const a = mk({ estimateCost: () => ({ units: { "places.pro": 10 }, usd: 1 }) });
+    const sink = new MemorySink();
+    const s = await runAdapter(a, {}, { runId: "r", budget: new Budget({ "places.pro": 5 }), sinks: [sink] });
+    expect(s.status).toBe("failed"); expect(s.error).toMatch(/Budget exceeded/); expect(sink.records).toHaveLength(0);
+  });
+  it("flushes partial results when the adapter throws", async () => {
+    const a = mk({ async *run() { yield { source: "t", sourceId: "1", payload: {} }; throw new Error("boom"); } });
+    const sink = new MemorySink(); const s = await runAdapter(a, {}, { runId: "r", sinks: [sink] });
+    expect(s.status).toBe("failed"); expect(sink.records).toHaveLength(1);
+  });
+  it("cancels via store flag", async () => {
+    const store = new MemoryRunStore(); store.cancel = true;
+    const s = await runAdapter(mk({ n: 1000 }), {}, { runId: "r", store, batchSize: 10 });
+    expect(s.status).toBe("canceled"); expect(s.records).toBeLessThan(1000);
+  });
+  it("counts invalid records without failing the run", async () => {
+    const a = mk({ async *run() { yield { source: "t", sourceId: "", payload: {} } as any; yield { source: "t", sourceId: "ok", payload: {} }; } });
+    const s = await runAdapter(a, {}, { runId: "r" }); expect(s.invalid).toBe(1); expect(s.records).toBe(1);
+  });
+});
+describe("supabase adapters (fake client)", () => {
+  const calls: any[] = [];
+  const q: any = (t: string) => ({ upsert: (rows: any, o?: any) => { calls.push(["upsert", t, rows, o]); return Promise.resolve({ error: null }); }, update: (v: any) => ({ eq: (c: string, id: string) => { calls.push(["update", t, v, id]); return Promise.resolve({ error: null }); } }), select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: { cancel_requested: true }, error: null }) }) }) });
+  const db = { from: q };
+  it("writes runs and raw_records", async () => {
+    const store = new SupabaseRunStore(db), sink = new SupabaseSink(db, 2);
+    await runAdapter(mk({ n: 5 }), {}, { runId: "r9", store, sinks: [sink], batchSize: 2 });
+    expect(calls.filter((c) => c[1] === "raw_records").length).toBeGreaterThan(0);
+    expect(calls.some((c) => c[0] === "update" && c[2].status === "canceled")).toBe(true);
+  });
+});
+</file>
+
+<file path="packages/core/src/index.ts">
+export * from "./types"; export * from "./budget"; export * from "./normalize"; export * from "./resolver";
+export * from "./sinks"; export * from "./store"; export * from "./runner"; export * from "./testkit";
+export * from "./launcher";
+</file>
+
+<file path="packages/core/src/launcher.test.ts">
+import { describe, expect, it } from "vitest";
+import { launchRun, requestCancel } from "./index";
+
+const mkDb = () => { const log: any[] = []; return { log, from: (t: string) => ({ insert: async (v: any) => { log.push(["insert", t, v]); return { error: null }; }, update: (v: any) => ({ eq: async (_c: string, id: string) => { log.push(["update", v, id]); return { error: null }; } }) }) }; };
+const cfg = (fetchImpl: any) => ({ projectId: "p", region: "us-central1", job: "gmaps-legacy", getAccessToken: async () => "tok", fetchImpl });
+
+describe("launcher", () => {
+  it("queues the run and passes only RUN_ID to the job", async () => {
+    const db = mkDb(); let call: any;
+    const { runId } = await launchRun(db, cfg(async (u: string, o: any) => { call = { u, o }; return { ok: true, status: 200, text: async () => "" }; }), { source: "gmaps", input: { city: "c" } });
+    expect(call.u).toBe("https://run.googleapis.com/v2/projects/p/locations/us-central1/jobs/gmaps-legacy:run");
+    expect(JSON.parse(call.o.body).overrides.containerOverrides[0].env).toEqual([{ name: "RUN_ID", value: runId }]);
+    expect(call.o.headers.authorization).toBe("Bearer tok"); expect(db.log[0][2]).toMatchObject({ status: "queued", input: { city: "c" } });
+  });
+  it("marks the run failed when the launch is rejected", async () => {
+    const db = mkDb();
+    await expect(launchRun(db, cfg(async () => ({ ok: false, status: 403, text: async () => "denied" })), { source: "gmaps", input: {} })).rejects.toThrow(/403/);
+    expect(db.log.at(-1)[1]).toMatchObject({ status: "failed" });
+  });
+  it("requests cancel", async () => { const db = mkDb(); await requestCancel(db, "r1"); expect(db.log[0][1]).toEqual({ cancel_requested: true }); });
+});
+</file>
+
+<file path="packages/core/src/launcher.ts">
+import { randomUUID } from "node:crypto";
+import type { SupabaseLike } from "./store";
+
+export interface LaunchConfig {
+  projectId: string; region: string; job: string;
+  getAccessToken: () => Promise<string>; fetchImpl?: typeof fetch;
+}
+/** Create a queued run row, then start the Cloud Run Job with only RUN_ID passed (inputs live in Postgres). */
+export async function launchRun(db: SupabaseLike, cfg: LaunchConfig, req: { source: string; input: unknown; implementation?: string }) {
+  const runId = randomUUID();
+  const ins = await db.from("runs").insert({ id: runId, source: req.source, implementation: req.implementation, input: req.input, status: "queued" });
+  if (ins.error) throw new Error(`create run: ${ins.error.message}`);
+  const url = `https://run.googleapis.com/v2/projects/${cfg.projectId}/locations/${cfg.region}/jobs/${cfg.job}:run`;
+  try {
+    const res = await (cfg.fetchImpl ?? fetch)(url, {
+      method: "POST",
+      headers: { authorization: `Bearer ${await cfg.getAccessToken()}`, "content-type": "application/json" },
+      body: JSON.stringify({ overrides: { containerOverrides: [{ env: [{ name: "RUN_ID", value: runId }] }] } }),
+    });
+    if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 200)}`);
+  } catch (e) {
+    const msg = `launch failed: ${e instanceof Error ? e.message : e}`;
+    await db.from("runs").update({ status: "failed", error: msg, finished_at: new Date().toISOString() }).eq("id", runId);
+    throw new Error(msg);
+  }
+  return { runId };
+}
+export async function requestCancel(db: SupabaseLike, runId: string) {
+  const r = await db.from("runs").update({ cancel_requested: true }).eq("id", runId);
+  if (r.error) throw new Error(r.error.message);
+}
+</file>
+
+<file path="packages/core/src/normalize.ts">
+export function normalizePhone(raw?: string): string | undefined {
+  if (!raw) return undefined;
+  const d = raw.replace(/\D/g, "");
+  if (d.length === 10) return "+1" + d;
+  if (d.length === 11 && d.startsWith("1")) return "+" + d;
+  if (d.length >= 11 && raw.trim().startsWith("+")) return "+" + d;
+  return undefined;
+}
+export function normalizeDomain(raw?: string): string | undefined {
+  if (!raw) return undefined;
+  try {
+    const u = new URL(/^https?:\/\//i.test(raw) ? raw : "https://" + raw);
+    const h = u.hostname.toLowerCase().replace(/^www\./, "");
+    return h.includes(".") ? h : undefined;
+  } catch { return undefined; }
+}
+const ABBR: [RegExp, string][] = [
+  [/\bstreet\b/g, "st"], [/\bavenue\b/g, "ave"], [/\broad\b/g, "rd"], [/\bboulevard\b/g, "blvd"],
+  [/\bdrive\b/g, "dr"], [/\bsuite\b/g, "ste"], [/\bnorth\b/g, "n"], [/\bsouth\b/g, "s"],
+  [/\beast\b/g, "e"], [/\bwest\b/g, "w"], [/\bunited states\b|\busa\b/g, ""],
+];
+export function normalizeAddress(raw?: string): string | undefined {
+  if (!raw) return undefined;
+  let s = raw.toLowerCase().replace(/[.,#]/g, " ");
+  for (const [re, rep] of ABBR) s = s.replace(re, rep);
+  s = s.replace(/\s+/g, " ").trim();
+  return s || undefined;
+}
+/** Shared platforms: never use these domains to link two records into one entity. */
+export const GENERIC_DOMAINS = new Set([
+  "facebook.com", "instagram.com", "linktr.ee", "yelp.com", "vagaro.com", "square.site",
+  "wixsite.com", "squarespace.com", "google.com", "linkedin.com", "tiktok.com",
+]);
+</file>
+
+<file path="packages/core/src/resolver.ts">
+import { createHash } from "node:crypto";
+import { GENERIC_DOMAINS, normalizeAddress, normalizeDomain, normalizePhone } from "./normalize";
+import type { SourceRecord } from "./types";
+
+export interface Entity {
+  id: string; name?: string; phone?: string; domain?: string; address?: string;
+  lat?: number; lng?: number; niche: string[];
+  members: { source: string; sourceId: string }[];
+  signals: SourceRecord["signals"];
+}
+function keys(r: SourceRecord): string[] {
+  const out: string[] = [];
+  const p = normalizePhone(r.phone); if (p) out.push("p:" + p);
+  const d = normalizeDomain(r.website); if (d && !GENERIC_DOMAINS.has(d)) out.push("d:" + d);
+  const a = normalizeAddress(r.address); if (a) out.push("a:" + a);
+  return out;
+}
+/** Resolver v0: union records sharing a phone, a non-generic domain, or a normalized address.
+ *  Known limits (tightened in Phase 3): shared call-center phones can over-merge; no fuzzy name matching. */
+export function resolve(records: SourceRecord[]): Entity[] {
+  const parent = records.map((_, i) => i);
+  const find = (x: number): number => { while (parent[x] !== x) { parent[x] = parent[parent[x]!]!; x = parent[x]!; } return x; };
+  const seen = new Map<string, number>();
+  records.forEach((r, i) => {
+    for (const k of keys(r)) {
+      const j = seen.get(k);
+      if (j === undefined) seen.set(k, i);
+      else { const a = find(i), b = find(j); if (a !== b) parent[Math.max(a, b)] = Math.min(a, b); }
+    }
+  });
+  const groups = new Map<number, SourceRecord[]>();
+  records.forEach((r, i) => { const g = find(i); (groups.get(g) ?? groups.set(g, []).get(g)!).push(r); });
+  return [...groups.values()].map((rs) => {
+    const first = <T,>(f: (r: SourceRecord) => T | undefined) => rs.map(f).find((v) => v !== undefined && v !== "");
+    const members = rs.map((r) => ({ source: r.source, sourceId: r.sourceId }));
+    const id = createHash("sha1").update(members.map((m) => `${m.source}:${m.sourceId}`).sort()[0]!).digest("hex").slice(0, 16);
+    return {
+      id, name: first((r) => r.name),
+      phone: first((r) => normalizePhone(r.phone)), domain: first((r) => { const d = normalizeDomain(r.website); return d && !GENERIC_DOMAINS.has(d) ? d : undefined; }),
+      address: first((r) => normalizeAddress(r.address)), lat: first((r) => r.lat), lng: first((r) => r.lng),
+      niche: [...new Set(rs.flatMap((r) => r.niche))], members, signals: rs.flatMap((r) => r.signals),
+    };
+  });
+}
+</file>
+
+<file path="packages/core/src/runner.ts">
+import { Budget, BudgetExceeded } from "./budget";
+import type { RunStore } from "./store";
+import type { Sink } from "./sinks";
+import { SourceRecordSchema, type Adapter, type SourceRecord } from "./types";
+
+export interface RunOptions {
+  runId: string; budget?: Budget; sinks?: Sink[]; store?: RunStore; signal?: AbortSignal;
+  batchSize?: number; maxRecords?: number; log?: (msg: string, data?: unknown) => void;
+}
+export interface RunSummary {
+  runId: string; source: string; status: "succeeded" | "failed" | "canceled";
+  records: number; invalid: number; spend: Record<string, number>; error?: string; durationMs: number;
+}
+
+export async function runAdapter(adapter: Adapter, rawInput: unknown, opts: RunOptions): Promise<RunSummary> {
+  const t0 = Date.now();
+  const { runId, sinks = [], store } = opts;
+  const budget = opts.budget ?? new Budget({}, true);
+  const log = opts.log ?? (() => {});
+  const source = adapter.manifest.id;
+  const ac = new AbortController();
+  opts.signal?.addEventListener("abort", () => ac.abort());
+  let records = 0, invalid = 0, buf: SourceRecord[] = [];
+  let status: RunSummary["status"] = "succeeded", error: string | undefined;
+
+  const flush = async () => {
+    if (buf.length) { const b = buf; buf = []; for (const s of sinks) await s.write(b, { runId }); }
+    await store?.progress(runId, { records, spend: budget.snapshot() });
+    if (await store?.isCancelRequested(runId)) ac.abort();
+  };
+  try {
+    const input = adapter.manifest.inputSchema.parse(rawInput);
+    await store?.start(runId, source, input);
+    const est = adapter.estimateCost(input);
+    if (!budget.canAfford(est.units)) {
+      const [k, n] = Object.entries(est.units).find(([k, n]) => n > budget.remaining(k))!;
+      throw new BudgetExceeded(k, n, budget.remaining(k));
+    }
+    for (const [k, n] of Object.entries(est.units)) budget.spend(k, n);
+    const it = adapter.run(input, { runId, signal: ac.signal, budget, log })[Symbol.asyncIterator]();
+    for (;;) {
+      if (ac.signal.aborted) { status = "canceled"; await it.return?.(); break; }
+      const next = await it.next();
+      if (next.done) break;
+      const parsed = SourceRecordSchema.safeParse(next.value);
+      if (!parsed.success) { invalid++; if (invalid <= 3) log("invalid record", parsed.error.issues); continue; }
+      buf.push(parsed.data); records++;
+      if (buf.length >= (opts.batchSize ?? 100)) await flush();
+      if (opts.maxRecords && records >= opts.maxRecords) { await it.return?.(); break; }
+    }
+  } catch (e) {
+    status = "failed"; error = e instanceof Error ? e.message : String(e);
+  }
+  try { await flush(); } catch (e) { if (status === "succeeded") { status = "failed"; error = e instanceof Error ? e.message : String(e); } }
+  for (const s of sinks) await s.close().catch(() => {});
+  const summary: RunSummary = { runId, source, status, records, invalid, spend: budget.snapshot(), error, durationMs: Date.now() - t0 };
+  await store?.finish(summary).catch(() => {});
+  return summary;
+}
+</file>
+
+<file path="packages/core/src/sinks.ts">
+import { appendFile, mkdir, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
+import type { SourceRecord } from "./types";
+
+export interface Sink { write(records: SourceRecord[], ctx: { runId: string }): Promise<void>; close(): Promise<void> }
+
+/** Fixed CSV contract: columns never change order or name. New fields go to JSONL/Postgres, not here. */
+export const CSV_HEADER = ["source", "source_id", "name", "phone", "website", "address", "lat", "lng", "niche"] as const;
+const esc = (v: unknown) => { const s = v === undefined || v === null ? "" : String(v); return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+export const toCsvRow = (r: SourceRecord) =>
+  [r.source, r.sourceId, r.name, r.phone, r.website, r.address, r.lat, r.lng, r.niche.join("|")].map(esc).join(",");
+
+export class CsvSink implements Sink {
+  private started = false;
+  constructor(private path: string) {}
+  async write(records: SourceRecord[]) {
+    if (!this.started) { await mkdir(dirname(this.path), { recursive: true }); await writeFile(this.path, CSV_HEADER.join(",") + "\n"); this.started = true; }
+    if (records.length) await appendFile(this.path, records.map(toCsvRow).join("\n") + "\n");
+  }
+  async close() { if (!this.started) await this.write([]); }
+}
+export class JsonlSink implements Sink {
+  private started = false;
+  constructor(private path: string) {}
+  async write(records: SourceRecord[]) {
+    if (!this.started) { await mkdir(dirname(this.path), { recursive: true }); await writeFile(this.path, ""); this.started = true; }
+    if (records.length) await appendFile(this.path, records.map((r) => JSON.stringify(r)).join("\n") + "\n");
+  }
+  async close() { if (!this.started) await this.write([]); }
+}
+export class MemorySink implements Sink {
+  records: SourceRecord[] = [];
+  async write(r: SourceRecord[]) { this.records.push(...r); }
+  async close() {}
+}
+</file>
+
+<file path="packages/core/src/store.ts">
+import type { RunSummary } from "./runner";
+import type { Sink } from "./sinks";
+import type { SourceRecord } from "./types";
+
+export interface RunStore {
+  start(runId: string, source: string, input: unknown): Promise<void>;
+  progress(runId: string, p: { records: number; spend: Record<string, number> }): Promise<void>;
+  finish(s: RunSummary): Promise<void>;
+  isCancelRequested(runId: string): Promise<boolean>;
+}
+export class MemoryRunStore implements RunStore {
+  events: string[] = []; cancel = false; last?: RunSummary;
+  async start(id: string) { this.events.push("start:" + id); }
+  async progress() { this.events.push("progress"); }
+  async finish(s: RunSummary) { this.last = s; this.events.push("finish:" + s.status); }
+  async isCancelRequested() { return this.cancel; }
+}
+/** Minimal structural type so core has no hard dependency on supabase-js. */
+export interface SupabaseLike { from(table: string): any }
+const check = (r: { error: { message: string } | null }) => { if (r.error) throw new Error(r.error.message); };
+
+export class SupabaseRunStore implements RunStore {
+  constructor(private db: SupabaseLike) {}
+  async start(id: string, source: string, input: unknown) {
+    check(await this.db.from("runs").upsert({ id, source, input, status: "running", started_at: new Date().toISOString(), heartbeat_at: new Date().toISOString() }));
+  }
+  async progress(id: string, p: { records: number; spend: Record<string, number> }) {
+    check(await this.db.from("runs").update({ records: p.records, spend: p.spend, heartbeat_at: new Date().toISOString() }).eq("id", id));
+  }
+  async finish(s: RunSummary) {
+    check(await this.db.from("runs").update({ status: s.status, records: s.records, spend: s.spend, error: s.error ?? null, finished_at: new Date().toISOString() }).eq("id", s.runId));
+  }
+  async isCancelRequested(id: string) {
+    const r = await this.db.from("runs").select("cancel_requested").eq("id", id).single();
+    check(r); return Boolean(r.data?.cancel_requested);
+  }
+}
+export class SupabaseSink implements Sink {
+  constructor(private db: SupabaseLike, private chunk = 500) {}
+  async write(records: SourceRecord[], ctx: { runId: string }) {
+    for (let i = 0; i < records.length; i += this.chunk) {
+      const rows = records.slice(i, i + this.chunk).map((r) => ({ run_id: ctx.runId, source: r.source, source_id: r.sourceId, payload: r.payload, normalized: { name: r.name, phone: r.phone, website: r.website, address: r.address, lat: r.lat, lng: r.lng, niche: r.niche, signals: r.signals } }));
+      check(await this.db.from("raw_records").upsert(rows, { onConflict: "run_id,source,source_id" }));
+    }
+  }
+  async close() {}
+}
+</file>
+
+<file path="packages/core/src/testkit.ts">
+import { SourceRecordSchema, type Adapter } from "./types";
+import { Budget } from "./budget";
+
+/** Contract checks every adapter must pass. Returns a list of problems (empty = compliant). */
+export async function checkAdapterContract(adapter: Adapter, sampleInput: unknown): Promise<string[]> {
+  const bad: string[] = [];
+  const m = adapter.manifest;
+  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(m.id)) bad.push("manifest.id must be kebab-case");
+  if (!/^\d+\.\d+\.\d+/.test(m.version)) bad.push("manifest.version must be semver");
+  const parsed = m.inputSchema.safeParse(sampleInput);
+  if (!parsed.success) return [...bad, "sample input fails inputSchema"];
+  const est = adapter.estimateCost(parsed.data);
+  if (est.usd < 0 || Object.values(est.units).some((n) => n < 0)) bad.push("estimateCost must be non-negative");
+  const run = (signal: AbortSignal) => adapter.run(parsed.data, { runId: "contract-test", signal, budget: new Budget({}, false), log: () => {} });
+  const ids = new Set<string>(); let n = 0;
+  for await (const r of run(new AbortController().signal)) {
+    const p = SourceRecordSchema.safeParse(r);
+    if (!p.success) { bad.push("record fails schema: " + p.error.issues[0]?.message); break; }
+    if (p.data.source !== m.id) bad.push(`record.source "${p.data.source}" must equal manifest.id`);
+    if (ids.has(p.data.sourceId)) bad.push("duplicate sourceId " + p.data.sourceId);
+    ids.add(p.data.sourceId); n++;
+  }
+  if (n === 0) bad.push("sample input produced no records");
+  const ac = new AbortController(); let after = 0, seen = false;
+  for await (const _ of run(ac.signal)) { if (seen) after++; else { seen = true; ac.abort(); } if (after > 10) break; }
+  if (after > 10) bad.push("adapter ignores ctx.signal after abort");
+  return bad;
+}
+</file>
+
+<file path="packages/core/src/types.ts">
+import { z } from "zod";
+import type { Budget } from "./budget";
+
+export const Signal = z.object({ type: z.string(), value: z.unknown(), observedAt: z.string().optional() });
+
+export const SourceRecordSchema = z.object({
+  source: z.string().min(1),
+  sourceId: z.string().min(1),
+  payload: z.record(z.string(), z.unknown()),
+  name: z.string().optional(),
+  phone: z.string().optional(),
+  website: z.string().optional(),
+  address: z.string().optional(),
+  lat: z.number().optional(),
+  lng: z.number().optional(),
+  niche: z.array(z.string()).default([]),
+  signals: z.array(Signal).default([]),
+});
+export type SourceRecord = z.output<typeof SourceRecordSchema>;
+export type SourceRecordInput = z.input<typeof SourceRecordSchema>;
+
+export interface Manifest {
+  id: string; // kebab-case, equals SourceRecord.source
+  version: string;
+  role: "discovery" | "enrichment";
+  worker: "light" | "browser";
+  inputSchema: z.ZodTypeAny;
+}
+export interface CostEstimate { units: Record<string, number>; usd: number }
+export interface RunContext {
+  runId: string;
+  signal: AbortSignal;
+  budget: Budget;
+  log: (msg: string, data?: unknown) => void;
+}
+export interface Adapter<I = any> {
+  manifest: Manifest;
+  estimateCost(input: I): CostEstimate;
+  run(input: I, ctx: RunContext): AsyncIterable<SourceRecordInput>;
+}
+</file>
+
+<file path="README.md">
+# Lead platform
+
+Platform-first lead sourcing for PyrexxAI. Every source is an independent adapter that can run alone (CLI) or under the platform.
+
+## Run
+```
+npm install
+npm test            # unit + contract tests
+npm run typecheck
+npm run lead -- run echo --input '{"count":10}' --out ./out --max 8
+```
+Output: `out/<runId>/echo.csv` (fixed header) and `echo.jsonl`.
+
+## Layout
+- `packages/core` — adapter contract, runner (budget guard, batching, cancel, partial flush), sinks (CSV, JSONL, Supabase), resolver v0, test kit.
+- `packages/cli` — `lead run <source>`.
+- `sources/echo` — reference adapter. Copy it to start a new source.
+- `supabase/migrations` — schema, RLS, private `runs` storage bucket.
+
+## Adding a source
+1. Copy `sources/echo`; set `manifest.id` (kebab-case, equals `record.source`).
+2. Implement `estimateCost` (declare cost units, e.g. `places.pro`) and `run` (async generator; check `ctx.signal`).
+3. Add `checkAdapterContract(adapter, sampleInput)` to its tests.
+4. Register it in `packages/cli/src/index.ts`.
+
+## Conventions
+- Budget is strict: a cost unit with no cap in `BUDGET_CAPS` has a zero allowance, so paid sources refuse to run until you set a cap.
+- CSV header is a contract (`CSV_HEADER`); new fields go to JSONL/Postgres.
+- Records failing the schema are counted (`invalid`), not fatal. Adapter errors flush partial results first.
+
+## Pyro UI (`apps/web`)
+The dashboard. Calls the deployed GMaps scraper over HTTP (never embeds its code) and stores results via a pluggable backend: local JSON/JSONL files by default, or Supabase automatically once `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` are set. See SETUP.md Section 14.
+```
+copy apps\web\.env.local.example apps\web\.env.local   # fill in GMAPS_SERVICE_URL
+npm install
+npm run dev:web
+```
+
+## Setup and deployment
+Follow **SETUP.md** (granular, Windows CMD). Run `node scripts\check-state.mjs` first; it checks your local state and never prints secrets.
+Do not run the old `deploy-scraper.bat`: it overwrites the Dockerfile, package.json and server.js with a placeholder stub.
+
+## Phase 2.1 — GMaps as-is (`sources/gmaps`)
+`scraper/` is a self-contained, deployable Node app (own package.json, Dockerfile, utils.js). `scraper.js` is your original logic (only `log`/`runScrape` exported, stdout logging added); `server.js` is the HTTP layer plus optional `SERVICE_TOKEN` auth; `job.js` is the Cloud Run Job entrypoint (reads input from the `runs` row by `RUN_ID`, scrapes, uploads `gmaps.csv` / `gmaps.jsonl` / `gmaps.raw.json` to the private `runs` bucket, upserts `raw_records`, heartbeats, honors `cancel_requested`).
+Platform side: `launchRun()` (core) queues a run and starts the job with only `RUN_ID`; `createGmapsLegacy()` calls the HTTP `/scrape` for local runs: `GMAPS_SERVICE_URL=... npm run lead -- run gmaps --input '{"city":"Columbus, OH","keyword":"med spa"}'`.
+
+Known limits of the as-is wrapper (fixed in 2.2): results only appear when the whole scrape ends, cancel discards partial work, Places spend cannot be metered (rely on GCP quota caps), overlapping grid with a 60-result cap per point, homepage-only website crawl. Emails live in the JSONL/Postgres `signals`, not the CSV contract.
+</file>
+
+<file path="scripts/check-state.mjs">
+// Read-only local state check. Run from the repo root: node scripts\check-state.mjs
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
+import { execSync } from "node:child_process";
+
+const root = process.cwd(), S = join(root, "sources", "gmaps", "scraper");
+const out = [];
+const add = (level, name, detail = "") => out.push({ level, name, detail });
+const read = (p) => (existsSync(p) ? readFileSync(p, "utf8") : null);
+const json = (p) => { try { return JSON.parse(read(p) ?? ""); } catch { return null; } };
+const sh = (c) => { try { return execSync(c, { stdio: ["ignore", "pipe", "ignore"], timeout: 20000, shell: true }).toString().trim(); } catch { return null; } };
+
+// 1. tooling
+const major = Number(process.versions.node.split(".")[0]);
+add(major >= 20 ? "PASS" : "FAIL", "Node.js >= 20", "found " + process.versions.node);
+add(sh("npm -v") ? "PASS" : "FAIL", "npm available", sh("npm -v") ?? "not found");
+add(sh("git --version") ? "PASS" : "FAIL", "git available", sh("git --version") ?? "not found");
+add(sh("gcloud --version") ? "PASS" : "WARN", "gcloud CLI available", sh("gcloud --version") ? "ok" : "not found (needed from SETUP step 5)");
+
+// 2. repo layout
+const must = ["package.json", "tsconfig.json", "SETUP.md", "supabase/migrations/0001_init.sql", "packages/core/src/index.ts", "packages/cli/src/index.ts", "sources/echo/src/index.ts", "sources/gmaps/src/index.ts", "scripts/check-state.mjs"];
+for (const f of must) add(existsSync(join(root, f)) ? "PASS" : "FAIL", "file: " + f);
+
+const rootPkg = json(join(root, "package.json"));
+add(rootPkg?.workspaces?.includes("packages/*") && rootPkg?.workspaces?.includes("sources/*") ? "PASS" : "FAIL", "root package.json has workspaces packages/* and sources/*");
+
+// apps/web (Pyro UI)
+const W = join(root, "apps", "web");
+const webMust = ["package.json", "next.config.mjs", "tailwind.config.ts", "app/layout.tsx", "app/overview/page.tsx", "lib/store/index.ts", "lib/runner.ts", ".env.local.example"];
+for (const f of webMust) add(existsSync(join(W, f)) ? "PASS" : "FAIL", "web file: " + f);
+add(rootPkg?.workspaces?.includes("apps/*") ? "PASS" : "FAIL", "root package.json workspaces includes apps/*");
+const webPkg = json(join(W, "package.json"));
+add(webPkg?.dependencies?.["@leads/core"] && webPkg?.dependencies?.["@leads/source-gmaps"] ? "PASS" : "FAIL", "apps/web depends on @leads/core and @leads/source-gmaps");
+add(existsSync(join(W, "node_modules")) || existsSync(join(root, "node_modules", "next")) ? "PASS" : "WARN", "web dependencies installed", "run: npm install (from repo root)");
+add(existsSync(join(W, ".next")) ? "PASS" : "WARN", "apps/web has been built at least once", "run: npm run build:web");
+add(existsSync(join(W, ".env.local")) ? "PASS" : "WARN", "apps/web/.env.local present", "copy .env.local.example to .env.local and fill in GMAPS_SERVICE_URL");
+const misplaced = ["puppeteer", "express", "axios", "dotenv", "@supabase/supabase-js"].filter((d) => rootPkg?.dependencies?.[d]);
+add(misplaced.length ? "FAIL" : "PASS", "scraper dependencies are NOT in the root package.json", misplaced.length ? "found in root: " + misplaced.join(", ") + " (move to sources/gmaps/scraper/package.json)" : "");
+
+// 3. scraper folder
+for (const f of ["scraper.js", "server.js", "job.js", "persist.js", "utils.js", "package.json", "Dockerfile", ".dockerignore"]) add(existsSync(join(S, f)) ? "PASS" : "FAIL", "scraper file: " + f);
+const stray = [join(root, "utils.py"), join(S, "utils.py")].filter(existsSync);
+add(stray.length ? "FAIL" : "PASS", "no utils.py (the scraper needs utils.js, JavaScript)", stray.map((p) => relative(root, p)).join(", "));
+const srv = read(join(S, "server.js")) ?? "";
+add(/from "\.\/scraper\.js"/.test(srv) && !/Replace with actual Google Maps scraper/.test(srv) && !/require\('express'\)/.test(srv) ? "PASS" : "FAIL", "server.js is the real HTTP layer (not the deploy-script stub)");
+add(/export const runScrape/.test(read(join(S, "scraper.js")) ?? "") ? "PASS" : "FAIL", "scraper.js exports runScrape");
+add(/export async function runJob/.test(read(join(S, "job.js")) ?? "") ? "PASS" : "FAIL", "job.js exports runJob");
+const utils = read(join(S, "utils.js")) ?? "";
+const miss = ["randomDelay", "generateGrid", "axiosWithRetry"].filter((n) => !new RegExp("export const " + n + "\\b").test(utils));
+add(utils && !miss.length ? "PASS" : "FAIL", "utils.js exports randomDelay, generateGrid, axiosWithRetry", miss.length ? "missing: " + miss.join(", ") : "");
+const sp = json(join(S, "package.json"));
+const needDeps = ["express", "puppeteer", "dotenv", "axios", "@supabase/supabase-js"].filter((d) => !sp?.dependencies?.[d]);
+add(sp && sp.type === "module" && !needDeps.length && sp.scripts?.job ? "PASS" : "FAIL", "scraper package.json: type=module, 5 dependencies, scripts.job", needDeps.length ? "missing deps: " + needDeps.join(", ") : "");
+const df = read(join(S, "Dockerfile")) ?? "";
+add(/chromium/.test(df) && /CMD/.test(df) ? "PASS" : "FAIL", "scraper Dockerfile installs chromium and has CMD");
+add(/FROM node:(1[0-9])\b/.test(df) ? "WARN" : "PASS", "scraper Dockerfile uses Node 20+", /FROM node:1/.test(df) ? "Node 18 is end-of-life; use node:20-slim" : "");
+add(existsSync(join(S, "package-lock.json")) ? "PASS" : "WARN", "scraper package-lock.json present", "run: cd sources\\gmaps\\scraper && npm install");
+
+// 4. installs
+add(existsSync(join(root, "node_modules")) ? "PASS" : "WARN", "root dependencies installed", "run: npm install");
+add(existsSync(join(S, "node_modules")) ? "PASS" : "WARN", "scraper dependencies installed", "run: cd sources\\gmaps\\scraper && npm install");
+
+// 5. legacy hazards
+for (const f of ["deploy-scraper.bat", "DOCKER~1", "DOCKER~2"]) if (existsSync(join(root, f)) || existsSync(join(S, f))) add("WARN", "legacy file present: " + f, "do NOT run deploy-scraper.bat (it overwrites Dockerfile, package.json and server.js with a stub)");
+
+// 6. secret scan (values are never printed)
+const skip = new Set(["node_modules", ".git", "out"]);
+const hits = [];
+(function walk(d) {
+  for (const n of readdirSync(d)) {
+    if (skip.has(n)) continue;
+    const p = join(d, n), st = statSync(p);
+    if (st.isDirectory()) walk(p);
+    else if (st.size < 2_000_000) {
+      const t = read(p) ?? "";
+      if (/AIza[0-9A-Za-z_\-]{35}/.test(t)) hits.push([p, "Google API key pattern"]);
+      if (/eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/.test(t)) hits.push([p, "JWT-like key (Supabase?)"]);
+      if (/sb_secret_[A-Za-z0-9_-]{10,}/.test(t)) hits.push([p, "Supabase secret key pattern"]);
+    }
+  }
+})(root);
+const envFiles = hits.filter(([p]) => /(^|[\\/])\.env(\.|$)/.test(p) && !/\.example$/.test(p));
+const bad = hits.filter((h) => !envFiles.includes(h));
+add(bad.length ? "FAIL" : "PASS", "no secrets inside tracked-style files", bad.map(([p, w]) => relative(root, p) + " (" + w + ")").join("; "));
+if (envFiles.length) add("WARN", ".env file holds a secret (fine only if gitignored)", envFiles.map(([p]) => relative(root, p)).join("; "));
+
+// 7. git
+if (sh("git rev-parse --is-inside-work-tree") === "true") {
+  add("PASS", "inside a git repository", "remote: " + (sh("git remote get-url origin") ?? "none"));
+  const tracked = (sh("git ls-files") ?? "").split(/\r?\n/).filter((f) => /(^|\/)\.env($|\.)/.test(f) && !/\.example$/.test(f) || /(^|\/)server\.log$/.test(f) || /scripts\/env\.cmd$/.test(f));
+  add(tracked.length ? "FAIL" : "PASS", "no .env / server.log / scripts\\env.cmd tracked by git", tracked.join(", "));
+  add("INFO", "uncommitted changes", (sh("git status --porcelain") ?? "").split("\n").filter(Boolean).length + " file(s)");
+} else add("WARN", "not inside a git repository", "run: git init");
+
+const icon = { PASS: "[PASS]", WARN: "[WARN]", FAIL: "[FAIL]", INFO: "[INFO]" };
+for (const r of out) console.log(`${icon[r.level]} ${r.name}${r.detail ? "  -> " + r.detail : ""}`);
+const c = (l) => out.filter((r) => r.level === l).length;
+console.log(`\nSummary: ${c("PASS")} pass, ${c("WARN")} warn, ${c("FAIL")} fail`);
+process.exit(c("FAIL") ? 1 : 0);
+</file>
+
+<file path="scripts/env.example.cmd">
+@echo off
+REM Copy to scripts\env.cmd, fill in, and run it in every new CMD window (CMD forgets variables).
+REM scripts\env.cmd is gitignored. Do NOT put secret values here, only names/IDs.
+set PROJECT_ID=pyro-lp-CHANGE-ME
+set PROJECT_NUM=CHANGE-ME-AFTER-STEP-5
+set REGION=us-central1
+set JOB_NAME=gmaps-legacy
+set SA_NAME=lp-job-sa
+set SUPABASE_URL=https://CHANGE-ME.supabase.co
+set SA_EMAIL=%SA_NAME%@%PROJECT_ID%.iam.gserviceaccount.com
+set BUILD_SA=%PROJECT_NUM%-compute@developer.gserviceaccount.com
+echo Loaded: project=%PROJECT_ID% region=%REGION% job=%JOB_NAME%
+</file>
+
+<file path="SETUP.md">
+# SETUP.md — pyro-lp lead platform (Windows CMD)
+
+This is the full, step-by-step setup for everything that exists today: the platform core, the GMaps scraper as a Cloud Run Job, and Supabase storage. Follow it top to bottom. **Do not skip the checkpoints.** Each one tells you what you should see; if you see something else, stop and use Section 12 or send me the output.
+
+**Not part of this guide yet:** the dashboard (Vercel) and the Places API (New) version of GMaps. They arrive in later phases with their own full guides.
+
+## How to read this guide
+
+- Every command is for **Command Prompt (CMD)**, not PowerShell. Open it from the Start menu by typing `cmd`.
+- UPPERCASE words are placeholders you replace.
+- A line ending in `^` continues on the next line. Do not add a space after `^`.
+- CMD forgets variables when you close the window. Section 5.4 creates `scripts\env.cmd`, which you run in every new window.
+- **Expected:** is what a correct result looks like. **STOP if:** is when to pause and fix.
+- Never paste a secret key into this repo, an issue, or a chat. Keys live only in Secret Manager and a password manager.
+
+## 0. Read this before touching anything
+
+1. **Never run `deploy-scraper.bat`.** It rewrites `Dockerfile`, `package.json` and `server.js` with a placeholder stub, then deploys a public (`--allow-unauthenticated`) service. If you ever ran it in a folder, that folder's files were overwritten. Delete the file from this repo (Section 11).
+2. **The scraper is JavaScript.** Its helper file must be `utils.js`, not `utils.py`.
+3. **Scraper dependencies belong in `sources\gmaps\scraper\package.json`**, not the root `package.json`. The root one only defines workspaces and dev tools.
+4. **Cost:** nothing here is free to run at scale. Place Details calls are billed. You will set quota caps and a budget alert (Section 6) before the first real run.
+5. Free-tier limits (Supabase, Cloud Run, Cloud Build) change. Check each provider's pricing page when you create the account.
+
+## 1. Accounts and tools
+
+| What | Where | You need it for |
+|---|---|---|
+| GitHub account (repo `pyro-lp`) | github.com | Source control |
+| Google account + Google Cloud billing account | console.cloud.google.com | Cloud Run, Maps APIs. Billing needs a card that allows international online payments; Google may place a small verification hold |
+| Supabase account | supabase.com/dashboard (sign in with GitHub) | Database and file storage |
+| Node.js 20 or newer (LTS) | nodejs.org | Everything |
+| Git for Windows | git-scm.com | Source control |
+| Google Cloud CLI | cloud.google.com/sdk/docs/install | Deploying |
+
+After installing, **close CMD and open a new one**, then check:
+
+```
+node -v
+npm -v
+git --version
+gcloud --version
+```
+
+**Expected:** Node `v20.x` or higher, npm a version number, git a version number, gcloud lists "Google Cloud SDK".
+**STOP if:** any says "is not recognized". Reinstall that tool, then open a new CMD window.
+
+## 2. Check your local state (gate)
+
+I can't see your machine, so this script reports it. It is read-only and never prints secret values.
+
+1. Open CMD and go to your repo. Use the real path:
+   ```
+   cd /d C:\PATH\TO\pyro-lp
+   ```
+2. Confirm you are in the right place:
+   ```
+   dir
+   ```
+   **Expected:** you see `SETUP.md`, `package.json`, `packages`, `sources`, `supabase`, `scripts`.
+   **STOP if:** `scripts` or `SETUP.md` is missing. Extract the latest `lead-platform.zip` over the repo first (this adds the scraper `package.json`, `Dockerfile`, `utils.js`, `scripts\`, and this guide). Do not overwrite your own `utils.js` if it already works; the script below will tell you.
+3. Run the check:
+   ```
+   node scripts\check-state.mjs
+   ```
+4. Read the result. Every line is `[PASS]`, `[WARN]`, `[FAIL]` or `[INFO]`.
+
+**Expected:** `0 fail`. Warnings about missing `node_modules`, the lock file or `gcloud` are fine for now.
+
+| If you see | Do this |
+|---|---|
+| `[FAIL] no utils.py` | Rename it, or replace it with the JavaScript file: `ren sources\gmaps\scraper\utils.py utils.js` only if the content is JavaScript. If it is Python, copy `utils.js` from the zip |
+| `[FAIL] scraper dependencies are NOT in the root package.json` | Open the root `package.json`, delete the `dependencies` block you added, save |
+| `[FAIL] server.js is the real HTTP layer` | `server.js` was overwritten by a stub. Restore it from the zip (`sources\gmaps\scraper\server.js`) |
+| `[FAIL] no secrets inside tracked-style files` | A key is in a committed-style file. Remove it, rotate that key (Section 6), and tell me before continuing |
+| `[FAIL] no .env ... tracked by git` | `git rm --cached PATH_OF_FILE`, then commit |
+
+5. **Send me the full output of the check before you continue.** I will confirm the state and adjust this guide if your repo differs from what I expect.
+
+## 3. Install and test locally
+
+1. Root install:
+   ```
+   npm install
+   ```
+   **Expected:** ends with "added N packages". Warnings are fine.
+2. Run the tests:
+   ```
+   npm test
+   ```
+   **Expected:** `Test Files  5 passed (5)` and `Tests  28 passed (28)`.
+   **STOP if:** any test fails. Send me the failing output.
+3. Type check:
+   ```
+   npm run typecheck
+   ```
+   **Expected:** no output at all.
+4. Try the reference source:
+   ```
+   npm run lead -- run echo --input "{\"count\":10}" --out .\out --max 8
+   ```
+   **Expected:** a JSON summary with `"status": "succeeded"` and `"records": 8`, and files under `out\<some-uuid>\` (`echo.csv`, `echo.jsonl`).
+5. Install the scraper's own dependencies (this also creates its lock file, which the Docker build needs):
+   ```
+   cd sources\gmaps\scraper
+   set PUPPETEER_SKIP_DOWNLOAD=true
+   npm install
+   cd ..\..\..
+   ```
+   **Expected:** a `node_modules` folder and `package-lock.json` inside `sources\gmaps\scraper`.
+6. Re-run `node scripts\check-state.mjs`. **Expected:** `0 fail`, and the two `node_modules` warnings are gone.
+
+## 4. Supabase
+
+1. Go to https://supabase.com/dashboard and sign in.
+2. **New project.** Organization: your personal one. Name: `pyro-lp`. Database password: click **Generate**, then copy it into your password manager (you cannot view it again). Region: a US region (East US is fine). Plan: Free.
+3. Click **Create new project** and wait until the dashboard finishes loading (about 2 minutes).
+4. Get your keys: **Project Settings** (gear icon) → **API** (it may be called **API Keys** or **Data API**; the UI changes).
+   - Copy **Project URL** (looks like `https://abcdxyz.supabase.co`). You will put it in `scripts\env.cmd` later.
+   - Copy the **service_role** key (or the new **secret** key). Save it in your password manager. This key bypasses all security rules; only the job uses it.
+5. Create the schema: left menu → **SQL Editor** → **New query**.
+   - Open `supabase\migrations\0001_init.sql` in Notepad, select all, copy.
+   - Paste into the SQL Editor and click **Run**.
+   **Expected:** "Success. No rows returned."
+6. Verify tables: left menu → **Table Editor**. **Expected:** `runs`, `raw_records`, `entities`, `entity_sources`, `contacts`, `signals`, `scores`, `suppression`.
+7. Verify storage: left menu → **Storage**. **Expected:** a bucket named `runs`, not public.
+   If it is missing: **New bucket** → name `runs` → leave "Public bucket" off → Create.
+
+**STOP if:** the SQL run shows an error. Copy the message to me.
+
+## 5. Google Cloud: project, billing, CLI
+
+### 5.1 Create a dedicated project
+
+I recommend a new project instead of reusing `midas-pyrex`: separate quotas, billing alerts and API keys, and it keeps Midas isolated.
+
+1. Go to https://console.cloud.google.com.
+2. Click the project picker at the top → **New project**.
+3. Project name: `pyro-lp`. **Project ID:** edit it to something unique such as `pyro-lp-4821` (IDs are global and permanent). Write it down.
+4. Create, then make sure the new project is selected in the picker.
+
+### 5.2 Link billing
+
+1. Left menu → **Billing**. If asked, **Link a billing account** (create one with your card if you have none).
+2. **Expected:** the project shows a billing account name.
+
+### 5.3 Sign in with the CLI
+
+```
+gcloud auth login
+```
+A browser opens; sign in with the same Google account. Then:
+```
+gcloud config set project YOUR_PROJECT_ID
+gcloud config list
+```
+**Expected:** `project = YOUR_PROJECT_ID`.
+
+### 5.4 Create your environment file
+
+```
+copy scripts\env.example.cmd scripts\env.cmd
+notepad scripts\env.cmd
+```
+Fill in `PROJECT_ID` and `SUPABASE_URL`. Leave `PROJECT_NUM` for now. Save. Then load it (do this in every new CMD window):
+```
+scripts\env.cmd
+```
+**Expected:** `Loaded: project=... region=us-central1 job=gmaps-legacy`.
+
+### 5.5 Enable APIs and find your project number
+
+```
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com iam.googleapis.com
+```
+This takes a minute. Then get the project number:
+```
+gcloud projects describe %PROJECT_ID% --format="value(projectNumber)"
+```
+Put that number into `PROJECT_NUM` in `scripts\env.cmd`, save, and run `scripts\env.cmd` again.
+
+Now enable the two Maps APIs in the UI: left menu → **APIs & Services → Library**. Search **Geocoding API** → **Enable**. Search **Places API** (the original one, not "Places API (New)") → **Enable**.
+
+**Expected:** both appear under **APIs & Services → Enabled APIs & services**.
+
+## 6. Google Maps key, quotas, budget (security hotfix)
+
+### 6.1 Create a restricted key
+
+1. **APIs & Services → Credentials → Create credentials → API key.**
+2. Click the new key's name → rename to `pyro-lp-maps-key`.
+3. Under **API restrictions** choose **Restrict key** and tick **Geocoding API** and **Places API**. Leave application restrictions off (Cloud Run has no fixed IP). **Save.**
+4. Click **Show key** and copy it into your password manager. Do not paste it into CMD.
+
+### 6.2 Cap usage
+
+1. Left menu → **Google Maps Platform → Quotas** (if you cannot find it: APIs & Services → Enabled APIs → Places API → Quotas & System Limits).
+2. For **Places API** and **Geocoding API**, set the daily request quota to a low number while testing, for example 500 per day.
+   The exact quota names vary; choose the per-day request limit if shown, otherwise the lowest per-minute limit.
+
+### 6.3 Budget alert
+
+1. **Billing → Budgets & alerts → Create budget.**
+2. Name: `pyro-lp`. Scope: this project. Amount: for example $10. Add alerts at 50%, 90%, 100%. Make sure email notifications go to you.
+3. A budget **alerts**, it does not stop spending. The quotas above are your real brake.
+
+### 6.4 Retire the old key
+
+If the old scraper key ever appeared in a committed `.env.example`, delete it: open the project that owns it (`midas-pyrex`) → **APIs & Services → Credentials** → delete the old key. If that repo was ever pushed, also purge it from git history (Section 11).
+
+## 7. Secrets, service account, permissions
+
+### 7.1 Store secrets
+
+1. Left menu → **Security → Secret Manager** (enable it if prompted).
+2. **Create secret.** Name: `google-api-key`. Secret value: paste the Maps key. Create.
+3. **Create secret.** Name: `supabase-service-key`. Secret value: paste the Supabase service_role (or secret) key. Create.
+
+### 7.2 Create the job's service account
+
+```
+gcloud iam service-accounts create %SA_NAME% --display-name="Lead platform jobs"
+gcloud secrets add-iam-policy-binding google-api-key --member=serviceAccount:%SA_EMAIL% --role=roles/secretmanager.secretAccessor
+gcloud secrets add-iam-policy-binding supabase-service-key --member=serviceAccount:%SA_EMAIL% --role=roles/secretmanager.secretAccessor
+```
+**Expected:** each command prints an updated policy containing your service account.
+
+### 7.3 Allow builds from source
+
+New projects give the build service account no roles, so the first source deploy fails without this:
+
+```
+gcloud projects add-iam-policy-binding %PROJECT_ID% --member=serviceAccount:%BUILD_SA% --role=roles/run.builder
+```
+Wait about 2 minutes for it to take effect.
+
+## 8. Deploy the job
+
+1. Go to the scraper folder:
+   ```
+   cd sources\gmaps\scraper
+   ```
+2. Deploy:
+   ```
+   gcloud run jobs deploy %JOB_NAME% ^
+     --source . ^
+     --region %REGION% ^
+     --service-account %SA_EMAIL% ^
+     --tasks 1 --max-retries 0 --task-timeout 3h ^
+     --memory 4Gi --cpu 2 ^
+     --command node --args job.js ^
+     --set-env-vars SUPABASE_URL=%SUPABASE_URL%,GRID_SEARCH_ENABLED=true,FALLBACK_SCRAPING_ENABLED=true ^
+     --set-secrets GOOGLE_API_KEY=google-api-key:latest,SUPABASE_SERVICE_ROLE_KEY=supabase-service-key:latest
+   ```
+   If it asks to create an Artifact Registry repository, answer **Y**. The first build takes 5 to 10 minutes.
+   `--max-retries 0` is deliberate: a retry would repeat paid Places calls.
+3. **Expected:** `Job [gmaps-legacy] has successfully been deployed.`
+4. Go back to the repo root:
+   ```
+   cd ..\..\..
+   ```
+
+**If gcloud rejects `--source` for jobs**, build the image yourself, then deploy it:
+```
+gcloud artifacts repositories create lp --repository-format=docker --location=%REGION%
+gcloud builds submit sources\gmaps\scraper --tag %REGION%-docker.pkg.dev/%PROJECT_ID%/lp/%JOB_NAME%
+gcloud run jobs deploy %JOB_NAME% --image %REGION%-docker.pkg.dev/%PROJECT_ID%/lp/%JOB_NAME% --region %REGION% --service-account %SA_EMAIL% --tasks 1 --max-retries 0 --task-timeout 3h --memory 4Gi --cpu 2 --command node --args job.js --set-env-vars SUPABASE_URL=%SUPABASE_URL%,GRID_SEARCH_ENABLED=true,FALLBACK_SCRAPING_ENABLED=true --set-secrets GOOGLE_API_KEY=google-api-key:latest,SUPABASE_SERVICE_ROLE_KEY=supabase-service-key:latest
+```
+
+## 9. Smoke test (small and cheap)
+
+1. In Supabase **SQL Editor → New query**, run:
+   ```sql
+   insert into runs (source, input, status)
+   values ('gmaps', '{"city":"Columbus, OH","keyword":"med spa","radius":3000,"areas":["Short North"]}', 'queued')
+   returning id;
+   ```
+   Copy the `id` it returns. One area keeps this to a single search point, about 60 places at most.
+2. In CMD (with `scripts\env.cmd` loaded):
+   ```
+   gcloud run jobs execute %JOB_NAME% --region %REGION% --update-env-vars RUN_ID=THE_UUID --wait
+   ```
+   If your gcloud rejects `--update-env-vars` on the GA command, use `gcloud beta run jobs execute` with the same arguments.
+3. **Expected:** the command waits a few minutes, then reports the execution completed.
+4. Verify in Supabase:
+   - **Table Editor → `runs`:** your row has `status = succeeded`, `records` greater than 0, and `artifacts` listing three files.
+   - **Table Editor → `raw_records`:** rows for that run id.
+   - **Storage → `runs` → THE_UUID:** `gmaps.csv`, `gmaps.jsonl`, `gmaps.raw.json`. Download `gmaps.csv` and open it in Excel.
+5. **Logs:** Cloud Console → **Cloud Run → Jobs → gmaps-legacy → Executions →** your execution → **Logs**.
+6. **Cancel test (optional):** insert another run, execute it without `--wait`, then in SQL run `update runs set cancel_requested = true where id = 'THE_UUID';`. Within about 15 seconds the run shows `canceled`.
+7. **Clean up the test:** `delete from runs where id = 'THE_UUID';` removes its `raw_records` too. Delete its folder in Storage by hand.
+
+**STOP if:** the status is `failed`. Read the `error` column and the logs, then see Section 12.
+
+## 10. The old service in `midas-pyrex` (decide, then act)
+
+The old deploy script created a Cloud Run service called `gmaps-scraper` and a bucket `midas-pyrex-scraper-output`. It deployed a placeholder that scrapes nothing, and it was public.
+
+1. See what exists:
+   ```
+   gcloud run services list --project midas-pyrex
+   gcloud storage ls --project midas-pyrex
+   ```
+2. **Before deleting anything**, check whether Midas or anything else calls that service URL. Search your Midas code and settings for `gmaps-scraper` and the service URL.
+3. Remove public access:
+   ```
+   gcloud run services remove-iam-policy-binding gmaps-scraper --member=allUsers --role=roles/run.invoker --region us-central1 --project midas-pyrex
+   ```
+4. Once you are sure nothing uses it:
+   ```
+   gcloud run services delete gmaps-scraper --region us-central1 --project midas-pyrex
+   ```
+5. Inspect the bucket contents before deciding to delete it.
+
+## 11. Git hygiene and commit
+
+1. Delete the dangerous script and leftovers if present:
+   ```
+   del deploy-scraper.bat
+   del sources\gmaps\scraper\deploy-scraper.bat
+   ```
+   (An error saying the file is not found is fine.)
+2. **If the old scraper repo was ever pushed with a real key in `.env.example`,** purge it from that repo's history:
+   ```
+   pip install git-filter-repo
+   echo THE_OLD_KEY==>REMOVED> replacements.txt
+   git filter-repo --replace-text replacements.txt
+   git remote add origin YOUR_REPO_URL
+   git push --force
+   ```
+   Then delete `replacements.txt`. Treat the old key as burned either way.
+3. Check what would be committed:
+   ```
+   node scripts\check-state.mjs
+   git status
+   ```
+   **Expected:** `0 fail`. `git status` must not list `.env`, `server.log`, `scripts\env.cmd` or `node_modules`.
+4. Commit and push:
+   ```
+   git add .
+   git commit -m "Phase 1 core, Phase 2.1 GMaps job, setup guide"
+   git push
+   ```
+
+## 12. Troubleshooting
+
+| Symptom | Likely cause and fix |
+|---|---|
+| `PERMISSION_DENIED ... default service account is missing required IAM permissions` on deploy | Section 7.3 not applied or not yet propagated. Re-run it and wait 2 minutes |
+| `REQUEST_DENIED` in logs | The key's API restrictions don't include Geocoding/Places, or the APIs are not enabled (Section 5.5, 6.1) |
+| Job can't read a secret | Section 7.2 bindings missing, or the secret name differs from `google-api-key` / `supabase-service-key` |
+| Chrome crashes or `Target closed` | Memory too low. Keep `--memory 4Gi`. Check `FALLBACK_SCRAPING_ENABLED` |
+| `upload gmaps.csv: ...` error | `runs` bucket missing or misnamed (Section 4.7) |
+| `run ... not found` | The `RUN_ID` you passed doesn't exist in `runs`, or the wrong Supabase project URL |
+| Run stuck `running` | Job died without updating. Check logs, then `update runs set status='failed' where id='...'` |
+| `Unknown argument` or odd CMD errors | A space after `^`, pasted line breaks, or unloaded variables. Run `scripts\env.cmd` and retype |
+| `npm ci` fails during the Docker build | The scraper's `package-lock.json` is out of sync. Run `npm install` in `sources\gmaps\scraper`, commit the lock, redeploy |
+| Tests pass locally but fail after an update | Run `npm install` again at root; the workspace links may be stale |
+
+## 13. Updating the platform (standard procedure)
+
+Every future update ships with its own guide. The skeleton is always:
+
+1. Commit or stash your local work: `git status`.
+2. Extract the new zip over the repo, or copy only the files I list.
+3. `npm install`, then `npm test` and `npm run typecheck`. Stop if anything fails.
+4. `node scripts\check-state.mjs`. Stop on any `[FAIL]`.
+5. Run any new SQL file from `supabase\migrations\` in the Supabase SQL Editor, **in numeric order**.
+6. If scraper files changed, redeploy with the Section 8 command.
+7. Run the Section 9 smoke test.
+8. Commit and push.
+
+**Rollback:** list recent images in **Cloud Console → Artifact Registry**, then:
+```
+gcloud run jobs update %JOB_NAME% --region %REGION% --image PREVIOUS_IMAGE_URL
+```
+SQL migrations are not auto-reversible; each one I ship will include its own undo script.
+
+## Appendix: scraper environment variables
+
+| Variable | Where it comes from | Meaning |
+|---|---|---|
+| `GOOGLE_API_KEY` | Secret Manager `google-api-key` | Maps key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Secret Manager `supabase-service-key` | Server-side Supabase key |
+| `SUPABASE_URL` | Job env var | Project URL |
+| `RUN_ID` | Set per execution | Row in `runs` to process |
+| `GRID_SEARCH_ENABLED`, `GRID_POINTS` | Job env var | Grid search toggle and point count |
+| `FALLBACK_SCRAPING_ENABLED` | Job env var | Website crawl via Puppeteer |
+| `MAX_CONCURRENT_SCRAPES` | Optional | Enrichment batch size (default 5) |
+| `SERVICE_TOKEN` | Optional, HTTP service only | Bearer token for `/scrape` |
+
+---
+
+## 14. Pyro UI (`apps/web`) — setup and run
+
+This adds the Next.js dashboard, "Pyro." It works with **no Supabase credentials**: without them it stores runs and leads as local JSON/JSONL files under `apps\web\.data\`. Supabase becomes the backend automatically the moment both its env vars are set — no code change, no flag to flip.
+
+**What Pyro does, concretely:** it calls the already-deployed GMaps scraper's `/scrape` endpoint over plain HTTP and stores what comes back. It does not contain the scraper's code — that still lives only in `sources\gmaps\scraper\` and runs wherever you deployed it (Section 8). If that deployment is still the Section 11 stub (0 results, no real scraping), Pyro will run successfully but return 0 leads; that's expected, not a Pyro bug. Deploy the real scraper per Section 8 first if you haven't.
+
+### 14.1 Re-run the state check
+
+```
+cd /d C:\PATH\TO\pyro-lp
+node scripts\check-state.mjs
+```
+**Expected:** `0 fail`. New checks cover `apps\web`: files present, workspaces includes `apps/*`, its dependency on `@leads/core` / `@leads/source-gmaps`, and whether it's been installed/built. `[WARN] apps/web/.env.local present` is expected before step 14.2.
+
+### 14.2 Configure
+
+```
+copy apps\web\.env.local.example apps\web\.env.local
+notepad apps\web\.env.local
+```
+Fill in `GMAPS_SERVICE_URL` with the scraper's Cloud Run **service** URL (not the Job — Pyro calls the HTTP service directly; if you only deployed the Job from Section 8, also deploy the service, same source, with `gcloud run deploy`, `--no-allow-unauthenticated`, no `--command`/`--args` override so it defaults to `node server.js`; put its auth token, if you set `SERVICE_TOKEN` on it, in `GMAPS_SERVICE_TOKEN`). Leave `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` blank for now. Save.
+
+### 14.3 Install and run
+
+```
+npm install
+npm run dev:web
+```
+**Expected:** `Local: http://localhost:3000`. Open it in a browser.
+
+**Checkpoints:**
+- **Overview** loads with a KPI row. If `GMAPS_SERVICE_URL` is blank, an amber banner appears at the top of every page; a second banner says runs are stored locally.
+- **Sources** shows GMaps as Active, five others as Planned (disabled).
+- **Sources → GMaps:** fill City/State and keyword, click **Start run**. Status moves queued → running → succeeded (or failed, with the scraper's error shown verbatim). On success, **Download CSV** / **Download JSONL** appear.
+- **Runs** lists it; opening it shows the same detail plus a Cancel button while it's running.
+- **Leads** shows the resolved entities (deduped by phone/domain/address) with a niche filter, a has-website filter, search, a drawer with signals and provenance, and a client-side **Export CSV**.
+- **Settings** shows every config flag's live status (values never shown) and which storage backend is active.
+
+**STOP if:** a page errors. Send me the browser console error and the terminal output from `npm run dev:web`.
+
+### 14.4 I already verified the mechanics
+
+Using a local mock HTTP endpoint standing in for the real scraper, I confirmed, against a real running build (not just code review): a run reaches `succeeded` with the right record count; signals (rating, review count, no-website flag, emails, socials) come through correctly; CSV and JSONL downloads match; `/api/leads` correctly dedupes two listings into two distinct entities; cancel sets the flag; a missing run returns 404; every page returns 200; and the file store writes `runs.json` and one JSONL per run under `.data\`. I also caught and fixed a real bug this way: Next.js statically pre-rendered a couple of routes at build time, baking in whatever env existed at that moment instead of reading it live — `dynamic = "force-dynamic"` is now set on every route/page that reads config or the store. **I have not tested it against your actual deployed scraper** — do that in 14.3.
+
+### 14.5 Production build (optional now)
+
+```
+npm run build:web
+npm run start --workspace apps/web
+```
+This is a real Node server (not a serverless function) — see the limitation below before deploying it anywhere that tears down idle processes.
+
+### 14.6 Known limits (by design, for this phase)
+
+- **A run executes inside the Node process serving Pyro.** This is correct for `next dev` or a single, always-on `next start`, and is exactly why Vercel isn't wired up yet: a serverless function would be killed mid-scrape. Don't deploy `apps\web` to Vercel until a later phase moves run execution to the Cloud Run Job dispatch already built in `packages/core` (`launchRun`).
+- **File storage is single-process.** Fine for one person running it locally; switch to Supabase (fill in both env vars) before more than one person uses it, or before running it anywhere that can restart or scale to multiple instances.
+- **Cancel on GMaps is best-effort**, same reason as documented in Section 14: the legacy scraper returns all results in one HTTP response, so cancellation can only take effect once that response arrives.
+- **Git check still applies:** before committing, re-run `node scripts\check-state.mjs` and confirm `.env.local` and `.data\` are not tracked (`apps\web\.gitignore` already excludes both).
+</file>
+
+<file path="sources/echo/package.json">
+{ "name": "@leads/source-echo", "version": "0.1.0", "type": "module", "main": "./src/index.ts", "dependencies": { "@leads/core": "*", "zod": "^3.23.8" } }
+</file>
+
+<file path="sources/echo/src/echo.test.ts">
+import { describe, expect, it } from "vitest";
+import { MemorySink, checkAdapterContract, resolve, runAdapter } from "@leads/core";
+import { echo } from "./index";
+
+describe("echo adapter", () => {
+  it("passes the adapter contract", async () => { expect(await checkAdapterContract(echo, { count: 8 })).toEqual([]); });
+  it("flows through runner and resolver, deduping on phone", async () => {
+    const sink = new MemorySink();
+    const s = await runAdapter(echo, { count: 6, dupEvery: 3 }, { runId: "e" , sinks: [sink] });
+    expect(s.records).toBe(6);
+    expect(resolve(sink.records)).toHaveLength(5);
+  });
+});
+</file>
+
+<file path="sources/echo/src/index.ts">
+import { z } from "zod";
+import type { Adapter, SourceRecordInput } from "@leads/core";
+
+const input = z.object({ count: z.number().int().min(1).max(1000).default(5), dupEvery: z.number().int().min(2).default(3) });
+type Input = z.infer<typeof input>;
+const pad = (n: number) => String(n).padStart(2, "0");
+
+/** Reference adapter: deterministic synthetic records (with deliberate duplicates). Copy this when starting a new source. */
+export const echo: Adapter<Input> = {
+  manifest: { id: "echo", version: "0.1.0", role: "discovery", worker: "light", inputSchema: input },
+  estimateCost: () => ({ units: {}, usd: 0 }),
+  async *run(inp, ctx) {
+    for (let i = 0; i < inp.count; i++) {
+      if (ctx.signal.aborted) return;
+      const dup = i > 0 && i % inp.dupEvery === 0;
+      const base = i - (dup ? 1 : 0);
+      const rec: SourceRecordInput = {
+        source: "echo", sourceId: `echo-${i}`, payload: { i },
+        name: `Echo Practice ${i}`,
+        phone: dup ? `614.555.01${pad(base)}` : `+1 (614) 555-01${pad(i)}`,
+        website: `https://www.echo-${i}.example.com/`,
+        address: `${100 + i} Main Street, Columbus, OH`,
+        niche: ["medspa"],
+      };
+      yield rec;
+    }
+  },
+};
+</file>
+
+<file path="sources/gmaps/package.json">
+{ "name": "@leads/source-gmaps", "version": "0.2.0", "type": "module", "main": "./src/index.ts", "dependencies": { "@leads/core": "*", "zod": "^3.23.8" } }
+</file>
+
+<file path="sources/gmaps/scraper/.dockerignore">
+node_modules
+npm-debug.log
+.env
+.env.*
+server.log
+*.test.js
+package.additions.json
+</file>
+
+<file path="sources/gmaps/scraper/.env.example">
+# Local runs only. In Cloud Run these come from Secret Manager / job env vars. Never commit real values.
+GOOGLE_API_KEY=
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+# Optional
+SERVICE_TOKEN=
+GRID_SEARCH_ENABLED=true
+GRID_POINTS=8
+FALLBACK_SCRAPING_ENABLED=true
+MAX_CONCURRENT_SESSIONS=5
+MAX_CONCURRENT_SCRAPES=5
+PROXIES=
+</file>
+
+<file path="sources/gmaps/scraper/Dockerfile">
+FROM node:20-slim
+
+# Chromium for Puppeteer (system package; Puppeteer's own download is skipped)
+RUN apt-get update && apt-get install -y \
+    chromium \
+    fonts-ipafont-gothic fonts-wqy-zenhei fonts-thai-tlwg fonts-kacst fonts-freefont-ttf \
+    --no-install-recommends && \
+    rm -rf /var/lib/apt/lists/*
+
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
+COPY . .
+
+EXPOSE 8080
+# Service mode runs server.js. The Cloud Run Job overrides this with: --command node --args job.js
+CMD ["node", "server.js"]
+</file>
+
+<file path="sources/gmaps/scraper/job.js">
+/** Cloud Run Job entrypoint: `node job.js` with RUN_ID set. Loads input from the runs row, scrapes, persists, reports. */
+import { pathToFileURL } from "node:url";
+import { persistRun as defaultPersist } from "./persist.js";
+
+const now = () => new Date().toISOString();
+
+export async function runJob({ db, runId, scrape, persist = defaultPersist, pollMs = 15000, log = console.log }) {
+  const { data: run, error } = await db.from("runs").select("input,status").eq("id", runId).single();
+  if (error || !run) throw new Error(`run ${runId} not found: ${error?.message ?? "no row"}`);
+  const upd = async (v) => { const r = await db.from("runs").update(v).eq("id", runId); if (r?.error) log("run update failed: " + r.error.message); };
+  await upd({ status: "running", started_at: now(), heartbeat_at: now() });
+
+  let cancelled = false, signalCancel;
+  const cancelP = new Promise((res) => { signalCancel = res; });
+  const timer = setInterval(async () => {
+    try {
+      await upd({ heartbeat_at: now() });
+      const { data } = await db.from("runs").select("cancel_requested").eq("id", runId).single();
+      if (data?.cancel_requested) { cancelled = true; signalCancel("cancelled"); }
+    } catch (e) { log("poll error: " + e.message); }
+  }, pollMs);
+
+  try {
+    const out = await Promise.race([scrape(run.input), cancelP]);
+    if (cancelled) {
+      await upd({ status: "canceled", error: "Canceled by user. Legacy mode keeps no partial results.", finished_at: now() });
+      return "canceled";
+    }
+    const { records, artifacts } = await persist(db, { runId, input: run.input, results: out.results });
+    await upd({ status: "succeeded", records, artifacts, error: null, finished_at: now() });
+    return "succeeded";
+  } catch (e) {
+    await upd({ status: "failed", error: String(e?.message ?? e), artifacts: e?.artifacts ?? [], finished_at: now() });
+    return "failed";
+  } finally { clearInterval(timer); }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const { RUN_ID, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env;
+  if (!RUN_ID || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) { console.error("RUN_ID, SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required"); process.exit(2); }
+  const { createClient } = await import("@supabase/supabase-js");
+  const { runScrape, log: fileLog } = await import("./scraper.js");
+  const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+  const status = await runJob({ db, runId: RUN_ID, scrape: runScrape, log: (m) => { console.log(m); fileLog(m); } });
+  process.exit(status === "failed" ? 1 : 0);
+}
+</file>
+
+<file path="sources/gmaps/scraper/job.test.js">
+import { describe, expect, it } from "vitest";
+import { runJob } from "./job.js";
+import { mapPlace, toCsv } from "./persist.js";
+
+const place = { place_id: "p1", name: 'Glow, "Med" Spa', formatted_address: "1 Main St", international_phone_number: "+1 614-555-0101", rating: 4.8, user_ratings_total: 120, geometry: { location: { lat: 1, lng: 2 } }, fallback_data: { emails: ["a@b.com"] } };
+
+function fakeDb({ cancel = false, uploadError = null, upsertError = null } = {}) {
+  const s = { updates: [], uploads: [], upserts: [], run: { input: { city: "Columbus, OH", keyword: "med spa" }, status: "queued", cancel_requested: cancel } };
+  return { s, storage: { from: () => ({ upload: async (p, b) => { s.uploads.push(p); return { error: uploadError }; } }) },
+    from: (t) => ({
+      select: () => ({ eq: () => ({ single: async () => ({ data: s.run, error: null }) }) }),
+      update: (v) => ({ eq: async () => { s.updates.push(v); return { error: null }; } }),
+      upsert: async (rows) => { s.upserts.push(...rows); return { error: upsertError }; },
+    }) };
+}
+const last = (db) => db.s.updates.at(-1);
+
+describe("persist mapping", () => {
+  it("maps a place and keeps signals", () => {
+    const r = mapPlace(place, "med spa");
+    expect(r.sourceId).toBe("p1"); expect(r.signals.map((x) => x.type)).toEqual(["rating", "review_count", "no_website", "emails"]);
+  });
+  it("csv escapes quotes and commas", () => { expect(toCsv([mapPlace(place, "med spa")])).toContain('"Glow, ""Med"" Spa"'); });
+});
+describe("runJob", () => {
+  it("scrapes, uploads 3 artifacts, upserts rows, marks succeeded", async () => {
+    const db = fakeDb();
+    const status = await runJob({ db, runId: "r1", pollMs: 1e6, scrape: async () => ({ results: [place] }), log: () => {} });
+    expect(status).toBe("succeeded");
+    expect(db.s.uploads).toEqual(["r1/gmaps.csv", "r1/gmaps.jsonl", "r1/gmaps.raw.json"]);
+    expect(db.s.upserts[0]).toMatchObject({ run_id: "r1", source: "gmaps", source_id: "p1" });
+    expect(last(db)).toMatchObject({ status: "succeeded", records: 1 });
+  });
+  it("marks failed when the scraper throws", async () => {
+    const db = fakeDb();
+    expect(await runJob({ db, runId: "r", pollMs: 1e6, scrape: async () => { throw new Error("geocode failed"); }, log: () => {} })).toBe("failed");
+    expect(last(db)).toMatchObject({ status: "failed", error: "geocode failed" });
+  });
+  it("keeps already-uploaded artifacts when the DB write fails", async () => {
+    const db = fakeDb({ upsertError: { message: "db down" } });
+    expect(await runJob({ db, runId: "r", pollMs: 1e6, scrape: async () => ({ results: [place] }), log: () => {} })).toBe("failed");
+    expect(last(db).artifacts).toHaveLength(3);
+  });
+  it("cancels while the scrape is still running", async () => {
+    const db = fakeDb({ cancel: true });
+    expect(await runJob({ db, runId: "r", pollMs: 5, scrape: () => new Promise(() => {}), log: () => {} })).toBe("canceled");
+    expect(last(db).status).toBe("canceled");
+  });
+});
+</file>
+
+<file path="sources/gmaps/scraper/package.additions.json">
+{
+  "note": "Merge into your scraper's package.json (keep its existing dependencies).",
+  "scripts": { "start": "node server.js", "job": "node job.js" },
+  "dependencies": { "@supabase/supabase-js": "^2.45.0" }
+}
+</file>
+
+<file path="sources/gmaps/scraper/package.json">
+{
+  "name": "maps-scraper",
+  "version": "1.2.0",
+  "main": "server.js",
+  "type": "module",
+  "scripts": { "start": "node server.js", "job": "node job.js" },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "axios": "^1.7.2",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "puppeteer": "^22.10.0"
+  }
+}
+</file>
+
+<file path="sources/gmaps/scraper/persist.js">
+/** Maps legacy scraper output to the platform record shape and persists it (Storage files + Postgres rows). */
+export const CSV_HEADER = ["source", "source_id", "name", "phone", "website", "address", "lat", "lng", "niche"];
+
+export function mapPlace(p, keyword) {
+  const loc = p?.geometry?.location ?? {};
+  const fb = p?.fallback_data ?? {};
+  const signals = [];
+  if (p.rating != null) signals.push({ type: "rating", value: p.rating });
+  if (p.user_ratings_total != null) signals.push({ type: "review_count", value: p.user_ratings_total });
+  if (p.business_status) signals.push({ type: "business_status", value: p.business_status });
+  if (!p.website) signals.push({ type: "no_website", value: true });
+  if (fb.emails?.length) signals.push({ type: "emails", value: fb.emails });
+  if (fb.phones?.length) signals.push({ type: "site_phones", value: fb.phones });
+  if (fb.social_media?.length) signals.push({ type: "social_links", value: fb.social_media });
+  if (p.url) signals.push({ type: "maps_url", value: p.url });
+  return {
+    source: "gmaps", sourceId: p.place_id, payload: p, name: p.name, phone: p.international_phone_number,
+    website: p.website, address: p.formatted_address, lat: loc.lat, lng: loc.lng,
+    niche: keyword ? [keyword] : [], signals,
+  };
+}
+const esc = (v) => { const s = v === undefined || v === null ? "" : String(v); return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+export const toCsvRow = (r) => [r.source, r.sourceId, r.name, r.phone, r.website, r.address, r.lat, r.lng, (r.niche ?? []).join("|")].map(esc).join(",");
+export const toCsv = (records) => CSV_HEADER.join(",") + "\n" + records.map(toCsvRow).map((l) => l + "\n").join("");
+
+export async function persistRun(db, { runId, input, results, bucket = "runs" }) {
+  const records = results.map((p) => mapPlace(p, input?.keyword)).filter((r) => r.sourceId);
+  const files = [
+    ["gmaps.csv", toCsv(records), "text/csv"],
+    ["gmaps.jsonl", records.map((r) => JSON.stringify(r) + "\n").join(""), "application/x-ndjson"],
+    ["gmaps.raw.json", JSON.stringify({ input, results }), "application/json"],
+  ];
+  const artifacts = [];
+  try {
+    for (const [name, body, contentType] of files) {
+      const path = `${runId}/${name}`;
+      const { error } = await db.storage.from(bucket).upload(path, Buffer.from(body), { contentType, upsert: true });
+      if (error) throw new Error(`upload ${name}: ${error.message}`);
+      artifacts.push({ bucket, path, name, bytes: Buffer.byteLength(body) });
+    }
+    for (let i = 0; i < records.length; i += 200) {
+      const rows = records.slice(i, i + 200).map(({ payload, source, sourceId, ...normalized }) => ({
+        run_id: runId, source, source_id: sourceId, payload, normalized,
+      }));
+      const { error } = await db.from("raw_records").upsert(rows, { onConflict: "run_id,source,source_id" });
+      if (error) throw new Error(`raw_records: ${error.message}`);
+    }
+  } catch (e) { e.artifacts = artifacts; throw e; }
+  return { records: records.length, artifacts };
+}
+</file>
+
+<file path="sources/gmaps/scraper/scraper.js">
+/**
+ * @file Smart Google Maps Scraper
+ * @description This file contains the core logic for a scalable and robust Google Maps scraper.
+ *
+ * ARCHITECTURE:
+ * 1. Express Server: A simple Express server is set up to expose a `/scrape` endpoint.
+ * 2. Configuration: All settings are managed via environment variables in a `.env` file, loaded by `dotenv`.
+ * 3. Utility Functions: Helper functions for grid generation, proxy management, and API retries are in `utils.js`.
+ * 4. Main Scrape Logic (`runScrape`):
+ *    - Takes a city, keyword, and other parameters.
+ *    - Converts the city to coordinates using the Geocoding API.
+ *    - If enabled, generates a grid of search points to cover a large area.
+ *    - Performs a Google Places 'Nearby Search' for each point, handling pagination.
+ *    - De-duplicates all found places by their `place_id`.
+ *    - Performs 'Place Details' lookups for each unique place.
+ *    - If enabled, performs fallback scraping using Puppeteer.
+ * 5. Fallback Scraping (`buildEnrichment` and helper functions):
+ *    - To improve performance, a single Puppeteer browser is launched for the entire job.
+ *    - To prevent resource exhaustion, scraping tasks are processed in concurrent batches.
+ *    - If a business has a website, it's scraped for emails, phones, and social media.
+ *    - If not, the Google Maps profile is scraped for social media and recent posts.
+ * 6. Logging: All major actions and errors are logged to `server.log` and stdout (Cloud Logging).
+ *
+ * NOTE: This file is the original scraper logic unchanged, except: express import removed,
+ * `log` and `runScrape` exported, and log() also writes to stdout. The HTTP layer is in server.js;
+ * the Cloud Run Job entrypoint is job.js.
+ */
+
+import puppeteer from "puppeteer";
+import dotenv from "dotenv";
+import fs from "fs/promises";
+import {
+  randomDelay,
+  generateGrid,
+  axiosWithRetry
+} from "./utils.js";
+
+// --- CONFIGURATION ---
+dotenv.config();
+
+const {
+  GOOGLE_API_KEY,
+  PORT = 8080,
+  PROXIES,
+  MAX_RETRIES = 3,
+  INITIAL_BACKOFF = 1000,
+  MIN_DELAY = 100,
+  MAX_DELAY = 500,
+  GRID_SEARCH_ENABLED = "true",
+  GRID_POINTS = 8,
+  FALLBACK_SCRAPING_ENABLED = "true",
+  MAX_CONCURRENT_SESSIONS = 5,
+  MAX_CONCURRENT_SCRAPES = 5,
+  PUPPETEER_EXECUTABLE_PATH,
+} = process.env;
+
+if (!GOOGLE_API_KEY) {
+  console.error("FATAL: GOOGLE_API_KEY is not defined in the .env file.");
+  process.exit(1);
+}
+
+const proxies = PROXIES ? PROXIES.split(",") : [];
+const gridSearchEnabled = GRID_SEARCH_ENABLED === "true";
+const fallbackScrapingEnabled = FALLBACK_SCRAPING_ENABLED === "true";
+
+// --- LOGGING ---
+export const log = async (message) => {
+  const timestamp = new Date().toISOString();
+  console.log(`${timestamp} - ${message}`);
+  await fs.appendFile("server.log", `${timestamp} - ${message}\n`).catch(() => {});
+};
+
+// --- PUPPETEER LOGIC (ENHANCED) ---
+const LAUNCH_OPTS = {
+  headless: true,
+  args: [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+  ],
+  executablePath: PUPPETEER_EXECUTABLE_PATH || process.env.GOOGLE_CHROME_BIN || null,
+  timeout: 60000,
+};
+
+const scrapeWebsite = async (browser, url) => {
+  if (!url) return {};
+  let page;
+  try {
+    page = await browser.newPage();
+    await page.goto(url, {
+      waitUntil: "networkidle2",
+      timeout: 60000
+    });
+    const data = await page.evaluate(() => {
+      const emailRegex = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/gi;
+      const phoneRegex = /(?:(?:\+?1\s*(?:[.-]\s*)?)?(?:\(\s*([2-9]1[02-9]|[2-9][02-8]1|[2-9][02-8][02-9])\s*\)|([2-9]1[02-9]|[2-9][02-8]1|[2-9][02-8][02-9]))\s*(?:[.-]\s*)?)?([2-9]1[02-9]|[2-9][02-8][02-9])\s*(?:[.-]\s*)?([0-9]{4})(?:\s*(?:#|x\.?|ext\.?|extension)\s*(\d+))?/gi;
+      const socials = ["facebook.com", "instagram.com", "twitter.com", "x.com", "linkedin.com", "youtube.com", "t.me", "wa.me", "pinterest.com"];
+      const text = document.body.innerText || "";
+      const emails = Array.from(new Set((text.match(emailRegex) || []).map(e => e.trim())));
+      const phones = Array.from(new Set((text.match(phoneRegex) || []).map(p => p.trim())));
+      const links = Array.from(document.querySelectorAll("a[href]")).map(a => a.href).filter(href => socials.some(s => href.includes(s)));
+      const social_links = Array.from(new Set(links));
+      return {
+        emails,
+        phones,
+        social_links
+      };
+    });
+    return {
+      emails: data.emails || [],
+      phones: data.phones || [],
+      social_media: data.social_links || []
+    };
+  } catch (e) {
+    return {
+      error: e.message
+    };
+  } finally {
+    if (page) await page.close().catch(() => {});
+  }
+};
+
+const scrapeMapsProfile = async (browser, mapsUrl) => {
+  if (!mapsUrl) return {};
+  let page;
+  try {
+    page = await browser.newPage();
+    await page.goto(mapsUrl, {
+      waitUntil: "networkidle2",
+      timeout: 60000
+    });
+    const data = await page.evaluate(() => {
+      const socials = ["facebook.com", "instagram.com", "twitter.com", "x.com", "linkedin.com", "youtube.com"];
+      const links = Array.from(document.querySelectorAll("a[href]")).map(a => a.href).filter(href => socials.some(s => href.includes(s)));
+      const social_links = Array.from(new Set(links));
+      const posts = [];
+      const updates_section = document.querySelector('div[aria-label*="Updates"]');
+      if (updates_section) {
+        const post_elements = updates_section.querySelectorAll('div[jsaction*="click:"]');
+        post_elements.forEach(p => {
+          if (p.innerText) posts.push(p.innerText.trim());
+        });
+      }
+      return {
+        social_links,
+        posts
+      };
+    });
+    return {
+      social_media: data.social_links || [],
+      posts: data.posts || []
+    };
+  } catch (e) {
+    return {
+      error: e.message
+    };
+  } finally {
+    if (page) await page.close().catch(() => {});
+  }
+};
+
+const buildEnrichment = async (browser, {
+  website,
+  mapsUrl
+}) => {
+  if (!fallbackScrapingEnabled || !browser) return {
+    empty: true
+  };
+  let enrichment = {};
+  const errors = [];
+  if (website) {
+    log(`Scraping website: ${website}`);
+    const siteData = await scrapeWebsite(browser, website);
+    if (siteData.error) errors.push({
+      source: "website",
+      message: siteData.error
+    });
+    enrichment = { ...siteData
+    };
+  } else if (mapsUrl) {
+    log(`No website found, scraping maps profile: ${mapsUrl}`);
+    const mapsData = await scrapeMapsProfile(browser, mapsUrl);
+    if (mapsData.error) errors.push({
+      source: "maps_profile",
+      message: mapsData.error
+    });
+    enrichment = { ...mapsData
+    };
+  }
+  enrichment.errors = errors;
+  if (Object.keys(enrichment).length <= 1) enrichment.empty = true;
+  return enrichment;
+};
+
+// --- GOOGLE API HELPERS ---
+const getCityCoordinates = async (city) => {
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(city)}&key=${GOOGLE_API_KEY}`;
+  const response = await axiosWithRetry({
+    url,
+    method: "GET"
+  }, {
+    retries: MAX_RETRIES,
+    backoff: INITIAL_BACKOFF,
+    proxies
+  });
+  const data = response.data;
+  if (data.status !== "OK" || !data.results[0]) {
+    throw new Error(`Geocoding failed for city "${city}": ${data.status}`);
+  }
+  return data.results[0].geometry.location;
+};
+
+const getPlaceDetails = async (place_id) => {
+  const fields = "name,geometry/location,formatted_address,website,url,international_phone_number,business_status,types,rating,user_ratings_total";
+  const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place_id}&fields=${fields}&key=${GOOGLE_API_KEY}`;
+  const response = await axiosWithRetry({
+    url,
+    method: "GET"
+  }, {
+    retries: MAX_RETRIES,
+    backoff: INITIAL_BACKOFF,
+    proxies
+  });
+  return response.data.result;
+};
+
+// --- MAIN SCRAPER LOGIC (MODIFIED WITH BATCHING) ---
+export const runScrape = async ({
+  city,
+  keyword,
+  radius = 50000,
+  areas = []
+}) => {
+  let browser;
+  if (fallbackScrapingEnabled) {
+    log("Fallback scraping is enabled, launching browser...");
+    browser = await puppeteer.launch(LAUNCH_OPTS);
+  }
+
+  try {
+    const cityCoords = await getCityCoordinates(city);
+    let searchPoints = [{ ...cityCoords,
+      area: city
+    }];
+    if (gridSearchEnabled && areas.length === 0) {
+      const grid = generateGrid(cityCoords.lat, cityCoords.lng, radius, GRID_POINTS);
+      searchPoints = grid.map(p => ({
+        lat: p.lat,
+        lng: p.lon,
+        area: "grid_point"
+      }));
+    } else if (areas.length > 0) {
+      searchPoints = await Promise.all(areas.map(async (area) => {
+        const coords = await getCityCoordinates(`${area}, ${city}`);
+        return { ...coords,
+          area
+        };
+      }));
+    }
+
+    const allResults = new Map();
+    const retryLogs = [];
+    for (const point of searchPoints) {
+      let nextPageToken = null;
+      do {
+        const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${point.lat},${point.lng}&radius=${radius}&keyword=${encodeURIComponent(keyword)}&key=${GOOGLE_API_KEY}${nextPageToken ? `&pagetoken=${nextPageToken}` : ''}`;
+        try {
+          await randomDelay(MIN_DELAY, MAX_DELAY);
+          const response = await axiosWithRetry({
+            url,
+            method: "GET"
+          }, {
+            retries: MAX_RETRIES,
+            backoff: INITIAL_BACKOFF,
+            proxies
+          });
+          const data = response.data;
+          for (const place of data.results) {
+            if (!allResults.has(place.place_id)) {
+              allResults.set(place.place_id, { ...place,
+                search_area: point.area
+              });
+            }
+          }
+          nextPageToken = data.next_page_token;
+          if (nextPageToken) await new Promise(resolve => setTimeout(resolve, 2000));
+        } catch (error) {
+          log(`ERROR during nearby search for point ${point.lat},${point.lng}: ${error.message}`);
+          retryLogs.push({
+            point,
+            error: error.message,
+            timestamp: new Date().toISOString()
+          });
+          nextPageToken = null;
+        }
+      } while (nextPageToken);
+    }
+
+    // --- BATCH PROCESSING LOGIC ---
+    const placesToScrape = Array.from(allResults.values());
+    const batchSize = parseInt(MAX_CONCURRENT_SCRAPES, 10) || 5;
+    const detailedResults = [];
+    log(`Found ${placesToScrape.length} unique places. Starting enrichment in batches of ${batchSize}.`);
+
+    for (let i = 0; i < placesToScrape.length; i += batchSize) {
+      const batch = placesToScrape.slice(i, i + batchSize);
+      log(`Processing batch ${i / batchSize + 1}...`);
+      const batchPromises = batch.map(place => (async () => {
+        try {
+          const details = await getPlaceDetails(place.place_id);
+          const fallback_data = await buildEnrichment(browser, {
+            website: details?.website,
+            mapsUrl: details?.url
+          });
+          detailedResults.push({ ...place,
+            ...details,
+            fallback_data
+          });
+        } catch (error) {
+          log(`ERROR during enrichment for place_id ${place.place_id}: ${error.message}`);
+          retryLogs.push({
+            place_id: place.place_id,
+            error: error.message,
+            timestamp: new Date().toISOString()
+          });
+        }
+      })());
+      await Promise.all(batchPromises);
+    }
+
+    return {
+      total_results: detailedResults.length,
+      results: detailedResults,
+      retry_logs: retryLogs
+    };
+  } finally {
+    if (browser) {
+      log("Closing browser...");
+      await browser.close().catch(() => {});
+    }
+  }
+};
+</file>
+
+<file path="sources/gmaps/scraper/server.js">
+/** HTTP layer (unchanged behavior from the original server.js) + optional bearer-token auth. */
+import express from "express";
+import { runScrape, log } from "./scraper.js";
+
+const { PORT = 8080, MAX_CONCURRENT_SESSIONS = 5, SERVICE_TOKEN } = process.env;
+const app = express();
+app.use(express.json());
+let activeSessions = 0;
+
+// If SERVICE_TOKEN is set, every /scrape call must send "Authorization: Bearer <token>".
+// Preferred in production: no token, and Cloud Run IAM (no allUsers invoker) instead.
+const auth = (req, res, next) => {
+  if (!SERVICE_TOKEN) return next();
+  return req.get("authorization") === `Bearer ${SERVICE_TOKEN}` ? next() : res.status(401).json({ error: "Unauthorized" });
+};
+
+app.post("/scrape", auth, async (req, res) => {
+  const { city, keyword, radius, areas } = req.body;
+  if (!city || !keyword) return res.status(400).json({ error: "Missing required fields: 'city' and 'keyword' are required." });
+  if (activeSessions >= Number(MAX_CONCURRENT_SESSIONS)) return res.status(429).json({ error: "Too many concurrent requests. Please try again later." });
+  activeSessions++;
+  log(`Starting scrape job for city="${city}" keyword="${keyword}". Active sessions: ${activeSessions}`);
+  try {
+    res.json(await runScrape({ city, keyword, radius, areas }));
+  } catch (error) {
+    log(`FATAL SCRAPE ERROR for city="${city}" keyword="${keyword}": ${error.message}`);
+    res.status(500).json({ error: error.message });
+  } finally {
+    activeSessions--;
+    log(`Finished scrape job for city="${city}" keyword="${keyword}". Active sessions: ${activeSessions}`);
+  }
+});
+
+app.get("/health", (_req, res) => res.json({ ok: true }));
+app.listen(PORT, () => { console.log(`Server running on http://localhost:${PORT}`); log("Server started."); });
+</file>
+
+<file path="sources/gmaps/scraper/utils.js">
+import axios from 'axios';
+
+// Helper function to introduce a random delay
+export const randomDelay = (min, max) => new Promise(resolve => setTimeout(resolve, Math.random() * (max - min) + min));
+
+// Function to generate a grid of lat/lon points. Radius is in meters.
+export const generateGrid = (lat, lon, radius, points) => {
+  const grid = [];
+  const R = 6378137; // Earth’s radius in meters
+  const d = radius;
+
+  for (let i = 0; i < points; i++) {
+    const brng = 2 * Math.PI * i / points;
+    const latRad = lat * Math.PI / 180;
+    const lonRad = lon * Math.PI / 180;
+
+    let newLatRad = Math.asin(Math.sin(latRad) * Math.cos(d / R) +
+                          Math.cos(latRad) * Math.sin(d / R) * Math.cos(brng));
+    let newLonRad = lonRad + Math.atan2(Math.sin(brng) * Math.sin(d / R) * Math.cos(latRad),
+                                 Math.cos(d / R) - Math.sin(latRad) * Math.sin(newLatRad));
+
+    grid.push({ lat: newLatRad * 180 / Math.PI, lon: newLonRad * 180 / Math.PI });
+  }
+  return grid;
+};
+
+// --- Proxy Management ---
+let proxyIndex = 0;
+export const getNextProxy = (proxies) => {
+  if (!proxies || proxies.length === 0) return null;
+  const proxy = proxies[proxyIndex];
+  proxyIndex = (proxyIndex + 1) % proxies.length;
+  return proxy;
+};
+
+// --- API Request with Retry ---
+export const axiosWithRetry = async (config, { retries = 3, backoff = 1000, proxies = [] }) => {
+  let lastError;
+  for (let i = 0; i < retries; i++) {
+    try {
+      const proxy = getNextProxy(proxies);
+      const requestConfig = { ...config };
+      // ✅ guarantee a timeout per request
+      if (requestConfig.timeout == null) requestConfig.timeout = 20000;
+      if (proxy) {
+        try {
+            const proxyUrl = new URL(proxy);
+            requestConfig.proxy = {
+              protocol: proxyUrl.protocol.replace(':', ''),
+              host: proxyUrl.hostname,
+              port: parseInt(proxyUrl.port, 10),
+            };
+            if (proxyUrl.username && proxyUrl.password) {
+                requestConfig.proxy.auth = {
+                    username: proxyUrl.username,
+                    password: proxyUrl.password
+                };
+            }
+        } catch (e) {
+            console.error("Invalid proxy URL:", proxy);
+        }
+      }
+      const response = await axios(requestConfig);
+      return response;
+    } catch (error) {
+      lastError = error;
+      console.warn(`Request failed (attempt ${i + 1}/${retries}): ${error.message}. Retrying in ${backoff}ms...`);
+      await new Promise(resolve => setTimeout(resolve, backoff));
+      backoff *= 2; // Exponential backoff
+    }
+  }
+  throw lastError;
+};
+</file>
+
+<file path="sources/gmaps/src/gmaps.test.ts">
+import { describe, expect, it } from "vitest";
+import { CSV_HEADER, MemorySink, SourceRecordSchema, checkAdapterContract, runAdapter, toCsvRow } from "@leads/core";
+// @ts-ignore untyped JS module from the scraper patch
+import { mapPlace as jsMap, toCsv as jsCsv } from "../scraper/persist.js";
+import { createGmapsLegacy, mapPlace } from "./index";
+
+const places = [
+  { place_id: "a", name: 'Glow, "Med" Spa', formatted_address: "1 Main St", international_phone_number: "+1 614-555-0101", website: "https://glow.com", rating: 4.8, user_ratings_total: 120, business_status: "OPERATIONAL", url: "https://maps/a", geometry: { location: { lat: 39.9, lng: -83 } }, fallback_data: { emails: ["x@glow.com"], phones: ["614-555-0101"], social_media: ["https://instagram.com/glow"] } },
+  { place_id: "b", name: "No Site Clinic", formatted_address: "2 Oak Ave", geometry: { location: { lat: 1, lng: 2 } } },
+];
+const fakeFetch = (async () => ({ ok: true, status: 200, json: async () => ({ results: places }), text: async () => "" })) as unknown as typeof fetch;
+
+describe("gmaps legacy adapter", () => {
+  const adapter = createGmapsLegacy({ baseUrl: "http://x", fetchImpl: fakeFetch });
+  it("passes the adapter contract", async () => { expect(await checkAdapterContract(adapter, { city: "Columbus, OH", keyword: "med spa" })).toEqual([]); });
+  it("flows through the runner", async () => {
+    const sink = new MemorySink();
+    const s = await runAdapter(adapter, { city: "c", keyword: "med spa" }, { runId: "g1", sinks: [sink] });
+    expect(s.records).toBe(2); expect(sink.records[1]!.signals.some((x) => x.type === "no_website")).toBe(true);
+  });
+  it("surfaces scraper HTTP errors", async () => {
+    const bad = createGmapsLegacy({ baseUrl: "http://x", fetchImpl: (async () => ({ ok: false, status: 429, text: async () => "busy" })) as unknown as typeof fetch });
+    const s = await runAdapter(bad, { city: "c", keyword: "k" }, { runId: "g2" });
+    expect(s.status).toBe("failed"); expect(s.error).toContain("429");
+  });
+});
+describe("TS and JS mappers stay in parity", () => {
+  it("same records and same CSV", () => {
+    const ts = places.map((p) => mapPlace(p, "med spa")), js = places.map((p: any) => jsMap(p, "med spa"));
+    expect(JSON.parse(JSON.stringify(ts))).toEqual(JSON.parse(JSON.stringify(js)));
+    const csv = CSV_HEADER.join(",") + "\n" + ts.map((r) => toCsvRow(SourceRecordSchema.parse(r)) + "\n").join("");
+    expect(jsCsv(js)).toBe(csv);
+  });
+});
+</file>
+
+<file path="sources/gmaps/src/index.ts">
+import { z } from "zod";
+import type { Adapter } from "@leads/core";
+import { mapPlace } from "./map";
+
+export { mapPlace };
+const input = z.object({
+  city: z.string().min(1), keyword: z.string().min(1),
+  radius: z.number().int().min(100).max(50000).optional(), areas: z.array(z.string()).optional(),
+});
+type Input = z.infer<typeof input>;
+export interface GmapsOptions { baseUrl?: string; token?: string; fetchImpl?: typeof fetch }
+
+/** Implementation "legacy": calls the existing scraper's POST /scrape. Used for local/dev and CLI.
+ *  In production the platform launches the Cloud Run Job instead (see core launchRun); the job persists itself. */
+export function createGmapsLegacy(opts: GmapsOptions = {}): Adapter<Input> {
+  return {
+    manifest: { id: "gmaps", version: "0.2.0", role: "discovery", worker: "browser", inputSchema: input },
+    // The legacy scraper does not report Places usage, so spend cannot be metered here. Rely on GCP quota caps.
+    estimateCost: () => ({ units: {}, usd: 0 }),
+    async *run(inp, ctx) {
+      const base = opts.baseUrl ?? process.env.GMAPS_SERVICE_URL;
+      if (!base) throw new Error("GMAPS_SERVICE_URL is not set");
+      const token = opts.token ?? process.env.GMAPS_SERVICE_TOKEN;
+      const res = await (opts.fetchImpl ?? fetch)(base.replace(/\/$/, "") + "/scrape", {
+        method: "POST", signal: ctx.signal,
+        headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(inp),
+      });
+      if (!res.ok) throw new Error(`scraper ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      const body = (await res.json()) as { results?: any[] };
+      for (const p of body.results ?? []) { if (ctx.signal.aborted) return; if (p?.place_id) yield mapPlace(p, inp.keyword); }
+    },
+  };
+}
+export const gmapsLegacy = createGmapsLegacy();
+</file>
+
+<file path="sources/gmaps/src/map.ts">
+import type { SourceRecordInput } from "@leads/core";
+
+/** Mirrors scraper/persist.js mapPlace (a parity test keeps them identical). */
+export function mapPlace(p: any, keyword?: string): SourceRecordInput {
+  const loc = p?.geometry?.location ?? {};
+  const fb = p?.fallback_data ?? {};
+  const signals: { type: string; value: unknown }[] = [];
+  if (p.rating != null) signals.push({ type: "rating", value: p.rating });
+  if (p.user_ratings_total != null) signals.push({ type: "review_count", value: p.user_ratings_total });
+  if (p.business_status) signals.push({ type: "business_status", value: p.business_status });
+  if (!p.website) signals.push({ type: "no_website", value: true });
+  if (fb.emails?.length) signals.push({ type: "emails", value: fb.emails });
+  if (fb.phones?.length) signals.push({ type: "site_phones", value: fb.phones });
+  if (fb.social_media?.length) signals.push({ type: "social_links", value: fb.social_media });
+  if (p.url) signals.push({ type: "maps_url", value: p.url });
+  return {
+    source: "gmaps", sourceId: p.place_id, payload: p, name: p.name, phone: p.international_phone_number,
+    website: p.website, address: p.formatted_address, lat: loc.lat, lng: loc.lng,
+    niche: keyword ? [keyword] : [], signals,
+  };
+}
+</file>
+
+<file path="supabase/migrations/0001_init.sql">
+-- Lead platform core schema. Single-user RLS for now; workers use the service role (bypasses RLS).
+create table if not exists runs (
+  id uuid primary key default gen_random_uuid(),
+  source text not null, implementation text, input jsonb not null default '{}',
+  status text not null default 'queued' check (status in ('queued','running','succeeded','failed','canceled')),
+  records int not null default 0, spend jsonb not null default '{}', error text,
+  cancel_requested boolean not null default false, artifacts jsonb not null default '[]',
+  heartbeat_at timestamptz, created_at timestamptz not null default now(), started_at timestamptz, finished_at timestamptz
+);
+create table if not exists raw_records (
+  id bigserial primary key, run_id uuid not null references runs(id) on delete cascade,
+  source text not null, source_id text not null, payload jsonb not null, normalized jsonb not null default '{}',
+  fetched_at timestamptz not null default now(), unique (run_id, source, source_id)
+);
+create index if not exists raw_records_lookup on raw_records (source, source_id);
+create table if not exists entities (
+  id uuid primary key default gen_random_uuid(), name text, phone_e164 text, domain text, address_norm text,
+  lat double precision, lng double precision, niche text[] not null default '{}',
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+);
+create index if not exists entities_phone on entities (phone_e164) where phone_e164 is not null;
+create index if not exists entities_domain on entities (domain) where domain is not null;
+create table if not exists entity_sources (
+  entity_id uuid not null references entities(id) on delete cascade, source text not null, source_id text not null,
+  primary key (source, source_id)
+);
+create table if not exists contacts (
+  id uuid primary key default gen_random_uuid(), entity_id uuid not null references entities(id) on delete cascade,
+  kind text not null check (kind in ('email','phone','social','person')), value text not null,
+  verified boolean not null default false, source text, created_at timestamptz not null default now(),
+  unique (entity_id, kind, value)
+);
+create table if not exists signals (
+  id bigserial primary key, entity_id uuid not null references entities(id) on delete cascade,
+  type text not null, value jsonb, source text not null, observed_at timestamptz not null default now()
+);
+create index if not exists signals_entity on signals (entity_id, type);
+create table if not exists scores (
+  entity_id uuid not null references entities(id) on delete cascade, version text not null,
+  score numeric not null, explanation jsonb not null default '{}', computed_at timestamptz not null default now(),
+  primary key (entity_id, version)
+);
+create table if not exists suppression (
+  kind text not null check (kind in ('email','phone','domain')), value text not null, reason text,
+  created_at timestamptz not null default now(), primary key (kind, value)
+);
+do $$ declare t text; begin
+  foreach t in array array['runs','raw_records','entities','entity_sources','contacts','signals','scores','suppression'] loop
+    execute format('alter table %I enable row level security', t);
+    execute format('drop policy if exists "authenticated full access" on %I', t);
+    execute format('create policy "authenticated full access" on %I for all to authenticated using (true) with check (true)', t);
+  end loop;
+end $$;
+insert into storage.buckets (id, name, public) values ('runs', 'runs', false) on conflict (id) do nothing;
+</file>
+
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "target": "ES2022", "module": "ESNext", "moduleResolution": "Bundler",
+    "strict": true, "noUncheckedIndexedAccess": true, "noEmit": true,
+    "esModuleInterop": true, "skipLibCheck": true, "types": ["node"]
+  },
+  "include": ["packages/*/src", "sources/*/src"]
+}
+</file>
+
+</files>

@@ -301,20 +301,25 @@ export default function DynamicSourcePage() {
   }
 
   // Parse workflow chaining URL params and update form reactively
-  useEffect(() => {
-    if (manifest?.tools?.length) {
-      const targetToolFromUrl = searchParams.get("tool");
-      const initialTool = manifest.tools.find((t) => t.id === targetToolFromUrl) || manifest.tools[0]!;
-      setActiveToolId(initialTool.id);
-
-      const defaults: Record<string, any> = {};
-      for (const f of initialTool.fields) {
-        const urlVal = searchParams.get(f.name);
-        defaults[f.name] = urlVal !== null ? urlVal : f.default;
-      }
-      setFormData(defaults);
-    }
-  }, [manifest, searchParams]);
+	useEffect(() => {
+		const stageId = searchParams.get("stageId");
+		if (stageId) {
+			// Fetch server-staged pipeline payload
+			fetch(`/api/pipelines/stage/${stageId}`)
+				.then((res) => res.json())
+				.then((data) => {
+					if (data?.stage?.payload) {
+						const stagedPayload = data.stage.payload;
+						setFormData((prev) => ({
+							...prev,
+							...stagedPayload,
+						}));
+						setStatus("Pre-loaded staged leads from previous workflow run.");
+					}
+				})
+				.catch(() => {});
+		}
+	}, [searchParams]);
 
   const activeTool = useMemo(() => {
     return manifest?.tools.find((t) => t.id === activeToolId);

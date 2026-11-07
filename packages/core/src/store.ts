@@ -12,9 +12,6 @@ export class NeonStore {
     this.pool = new Pool({ connectionString, ssl: { rejectUnauthorized: false } });
   }
 
-  /**
-   * Creates a queued run row in Neon
-   */
   async createRun(sourceId: string, input: unknown): Promise<string> {
     const res = await this.pool.query(
       `INSERT INTO runs (source_id, input, status, created_at)
@@ -24,9 +21,6 @@ export class NeonStore {
     return res.rows[0].id;
   }
 
-  /**
-   * Updates run execution status, record counters, and timestamps
-   */
   async updateRunStatus(
     runId: string,
     patch: {
@@ -66,21 +60,22 @@ export class NeonStore {
   }
 
   /**
-   * Atomically ingests batches of raw records, dedupes against existing practices,
-   * merges new attributes non-destructively, attributes personnel, and records run provenance.
+   * SET-BASED BULK INGESTION CTE (O(1) Single Database Roundtrip)
+   * Unpacks JSONB in Postgres, bulk inserts raw records, upserts canonical leads,
+   * assigns run provenance, and inserts personnel in a single atomic transaction.
    */
   async ingestBatch(
     runId: string,
     sourceId: string,
     candidates: { raw: RawRecord; candidate: LeadCandidate }[]
   ): Promise<number> {
-    let dedupedCount = 0;
+    if (!candidates.length) return 0;
     const client = await this.pool.connect();
 
     try {
       await client.query("BEGIN");
 
-      // 1. Check for custom field mappings configured for this source
+      // 1. Fetch dynamic source field mappings
       let savedMappings: Record<string, string> = {};
       try {
         const mapRes = await client.query(
@@ -90,18 +85,11 @@ export class NeonStore {
         if (mapRes.rows.length) savedMappings = mapRes.rows[0].mappings || {};
       } catch {}
 
-      for (const { raw, candidate } of candidates) {
-        // 2. Persist immutable raw record
-        await client.query(
-          `INSERT INTO raw_records (run_id, source_id, source_ref, payload)
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT (run_id, source_id, source_ref) DO NOTHING`,
-          [runId, sourceId, raw.sourceRef, JSON.stringify(raw.payload)]
-        );
-
-        // 3. Apply custom dynamic field mappings
+      // 2. Prepare structured JSON array for set-based PostgreSQL CTE
+      const preparedBatch = candidates.map(({ raw, candidate }) => {
         const customFields: Record<string, any> = {};
         const payload = raw.payload as Record<string, any>;
+
         for (const [rawKey, targetField] of Object.entries(savedMappings)) {
           if (payload[rawKey] !== undefined) {
             if (targetField.startsWith("custom:")) {
@@ -120,166 +108,111 @@ export class NeonStore {
 
         const domain = candidate.website ? normalizeDomain(candidate.website) : null;
         const phone = candidate.phone ? normalizePhone(candidate.phone) : null;
-        const rawName = candidate.name.trim();
-        const normName = rawName.toLowerCase().replace(/[^a-z0-9]/g, "");
-        const city = candidate.city?.trim() || "";
-        const state = candidate.state?.trim() || "";
+        const dedupeKey = generateDedupeKey(candidate);
+        const { score, reasons } = calculateLeadScore(candidate);
 
-        // 4. THREE-WAY DEDUPE LOOKUP
-        // Priority 1: Match on Domain or Phone
-        // Priority 2: Match on Name + Location (Same City/State)
-        const matchRes = await client.query(
-          `SELECT id, name, domain, phone_e164, email, website, city, state, signals, custom_fields, score
-           FROM leads
-           WHERE (domain IS NOT NULL AND domain = $1)
-              OR (phone_e164 IS NOT NULL AND phone_e164 = $2)
-              OR (LOWER(REGEXP_REPLACE(name, '[^a-zA-Z0-9]', '', 'g')) = $3
-                  AND (($4 != '' AND LOWER(city) = LOWER($4)) OR ($5 != '' AND LOWER(state) = LOWER($5))))
-           LIMIT 1`,
-          [domain, phone, normName, city, state]
-        );
-
-        let leadId: string;
-
-        if (matchRes.rows.length > 0) {
-          // --- EXISTING ENTITY FOUND: EVALUATE MERGE VS DISCARD ---
-          const existing = matchRes.rows[0];
-
-          const hasNewPhone = Boolean(phone && !existing.phone_e164);
-          const hasNewEmail = Boolean(candidate.email && !existing.email);
-          const hasNewWebsite = Boolean(domain && !existing.domain);
-          const hasNewDm = Boolean(candidate.decisionMaker?.name);
-          const hasNewSignals = Boolean(candidate.signals?.length > 0);
-
-          if (!hasNewPhone && !hasNewEmail && !hasNewWebsite && !hasNewDm && !hasNewSignals) {
-            // RULE 1: IDENTICAL DUPLICATE -> Discard row creation (Zero database bloat)
-            leadId = existing.id;
-          } else {
-            // RULE 2: PARTIAL MATCH WITH NEW DETAILS -> MERGE NON-DESTRUCTIVELY
-            const { score, reasons } = calculateLeadScore({
-              ...candidate,
-              phone: candidate.phone || existing.phone_e164,
-              email: candidate.email || existing.email,
-              website: candidate.website || existing.website,
-            });
-
-            const mergedRes = await client.query(
-              `UPDATE leads SET
-                 phone_e164 = COALESCE(leads.phone_e164, $1),
-                 email = COALESCE(leads.email, $2),
-                 website = COALESCE(leads.website, $3),
-                 domain = COALESCE(leads.domain, $4),
-                 decision_maker = CASE WHEN $5::jsonb != '{}'::jsonb THEN $5::jsonb ELSE leads.decision_maker END,
-                 signals = leads.signals || $6::jsonb,
-                 score = GREATEST(leads.score, $7),
-                 score_reasons = CASE WHEN $7 > leads.score THEN $8::jsonb ELSE leads.score_reasons END,
-                 updated_at = NOW()
-               WHERE id = $9
-               RETURNING id`,
-              [
-                phone,
-                candidate.email || null,
-                candidate.website || null,
-                domain,
-                JSON.stringify(candidate.decisionMaker || {}),
-                JSON.stringify(candidate.signals || []),
-                score,
-                JSON.stringify(reasons),
-                existing.id,
-              ]
-            );
-            leadId = mergedRes.rows[0].id;
-            dedupedCount++;
-          }
-        } else {
-          // --- RULE 3: DISTINCT PRACTICE -> INSERT UNIQUE ---
-          const dedupeKey = generateDedupeKey(candidate);
-          const { score, reasons } = calculateLeadScore(candidate);
-
-          const insRes = await client.query(
-            `INSERT INTO leads (
-              name, niche, phone_e164, email, website, domain, address, city, state, zip,
-              lat, lng, npi, decision_maker, signals, score, score_reasons, dedupe_key, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())
-            ON CONFLICT (dedupe_key) DO UPDATE SET
-              email = COALESCE(leads.email, EXCLUDED.email),
-              phone_e164 = COALESCE(leads.phone_e164, EXCLUDED.phone_e164),
-              website = COALESCE(leads.website, EXCLUDED.website),
-              domain = COALESCE(leads.domain, EXCLUDED.domain),
-              updated_at = NOW()
-            RETURNING id`,
-            [
-              rawName,
-              candidate.niche,
-              phone,
-              candidate.email ?? null,
-              candidate.website ?? null,
-              domain,
-              candidate.address ?? null,
-              candidate.city ?? null,
-              candidate.state ?? null,
-              candidate.zip ?? null,
-              candidate.lat ?? null,
-              candidate.lng ?? null,
-              candidate.npi ?? null,
-              JSON.stringify(candidate.decisionMaker ?? {}),
-              JSON.stringify(candidate.signals ?? []),
-              score,
-              JSON.stringify(reasons),
-              dedupeKey,
-            ]
-          );
-          leadId = insRes.rows[0].id;
-          dedupedCount++;
-
-          // Populate auxiliary companies table
-          try {
-            await client.query(
-              `INSERT INTO companies (name, niche, domain, website, general_phone, general_email, address, city, state, zip, commercial_score, dedupe_key)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-               ON CONFLICT (dedupe_key) DO NOTHING`,
-              [rawName, candidate.niche, domain, candidate.website || null, phone, candidate.email || null, candidate.address || null, candidate.city || null, candidate.state || null, candidate.zip || null, score, dedupeKey]
-            );
-          } catch {}
-        }
-
-        // 5. Upsert Personnel WITH Direct run_id Attribution
         const dm = candidate.decisionMaker;
-        if (dm && typeof dm.name === "string" && dm.name.trim().length >= 3) {
-          try {
-            const personName = dm.name.trim();
-            const personEmail = typeof dm.email === "string" && dm.email.includes("@") ? dm.email.toLowerCase().trim() : null;
-            const personDedupeKey = personEmail
-              ? `em:${personEmail}`
-              : `pn:${leadId}:${personName.toLowerCase().replace(/[^a-z0-9]/g, "")}`;
+        const hasValidDm = Boolean(dm && typeof dm.name === "string" && dm.name.trim().length >= 3);
+        const dmName = hasValidDm ? dm!.name.trim() : null;
+        const dmTitle = dm?.title?.trim() || "Decision Maker";
+        const dmEmail = dm?.email && dm.email.includes("@") ? dm.email.toLowerCase().trim() : null;
+        const dmPhone = dm?.phone?.trim() || null;
 
-            await client.query(
-              `INSERT INTO personnel (company_id, full_name, title, direct_email, direct_phone, dedupe_key, is_primary_decision_maker, run_id)
-               VALUES ($1, $2, $3, $4, $5, $6, TRUE, $7)
-               ON CONFLICT (dedupe_key) DO UPDATE SET
-                 company_id = EXCLUDED.company_id,
-                 run_id = COALESCE(EXCLUDED.run_id, personnel.run_id),
-                 direct_phone = COALESCE(personnel.direct_phone, EXCLUDED.direct_phone),
-                 direct_email = COALESCE(personnel.direct_email, EXCLUDED.direct_email),
-                 title = COALESCE(EXCLUDED.title, personnel.title)`,
-              [leadId, personName, dm.title || "Decision Maker", personEmail, dm.phone || null, personDedupeKey, runId]
-            );
-          } catch (e: any) {
-            console.error("[PERSONNEL INSERT ERROR]:", e.message);
-          }
-        }
+        return {
+          sourceId,
+          sourceRef: raw.sourceRef,
+          rawPayload: raw.payload,
+          name: candidate.name.trim(),
+          niche: candidate.niche || "Healthcare",
+          phone,
+          email: candidate.email?.trim() || null,
+          website: candidate.website || null,
+          domain,
+          address: candidate.address || null,
+          city: candidate.city || null,
+          state: candidate.state || null,
+          zip: candidate.zip || null,
+          signals: candidate.signals || [],
+          score,
+          scoreReasons: reasons,
+          dedupeKey,
+          customFields,
+          hasDm: hasValidDm,
+          dmName,
+          dmTitle,
+          dmEmail,
+          dmPhone,
+        };
+      });
 
-        // 6. Record Source Provenance WITH Direct run_id Attribution
-        await client.query(
-          `INSERT INTO lead_sources (lead_id, source_id, source_ref, confidence_tier, fields_provided, run_id)
-           VALUES ($1, $2, $3, 'MEDIUM', $4, $5)
-           ON CONFLICT (lead_id, source_id, source_ref) DO UPDATE SET run_id = EXCLUDED.run_id`,
-          [leadId, sourceId, raw.sourceRef, JSON.stringify(Object.keys(candidate)), runId]
-        );
-      }
+      // 3. EXECUTE SINGLE-TRIP ATOMIC SET-BASED CTE
+      const bulkSql = `
+        WITH input_batch AS (
+          SELECT * FROM jsonb_to_recordset($1::jsonb) AS (
+            "sourceId" TEXT, "sourceRef" TEXT, "rawPayload" JSONB,
+            "name" TEXT, "niche" TEXT, "phone" TEXT, "email" TEXT, "website" TEXT,
+            "domain" TEXT, "address" TEXT, "city" TEXT, "state" TEXT, "zip" TEXT,
+            "signals" JSONB, "score" INT, "scoreReasons" JSONB, "dedupeKey" TEXT, "customFields" JSONB,
+            "hasDm" BOOLEAN, "dmName" TEXT, "dmTitle" TEXT, "dmEmail" TEXT, "dmPhone" TEXT
+          )
+        ),
+        inserted_raw AS (
+          INSERT INTO raw_records (run_id, source_id, source_ref, payload)
+          SELECT $2, "sourceId", "sourceRef", "rawPayload" FROM input_batch
+          ON CONFLICT (run_id, source_id, source_ref) DO NOTHING
+        ),
+        upserted_leads AS (
+          INSERT INTO leads (
+            name, niche, phone_e164, email, website, domain, address, city, state, zip,
+            signals, score, score_reasons, dedupe_key, custom_fields, updated_at
+          )
+          SELECT 
+            "name", "niche", "phone", "email", "website", "domain", "address", "city", "state", "zip",
+            "signals", "score", "scoreReasons", "dedupeKey", "customFields", NOW()
+          FROM input_batch
+          ON CONFLICT (dedupe_key) DO UPDATE SET
+            phone_e164 = COALESCE(leads.phone_e164, EXCLUDED.phone_e164),
+            email = COALESCE(leads.email, EXCLUDED.email),
+            website = COALESCE(leads.website, EXCLUDED.website),
+            domain = COALESCE(leads.domain, EXCLUDED.domain),
+            signals = leads.signals || EXCLUDED.signals,
+            custom_fields = leads.custom_fields || EXCLUDED.custom_fields,
+            score = GREATEST(leads.score, EXCLUDED.score),
+            score_reasons = CASE WHEN EXCLUDED.score > leads.score THEN EXCLUDED.score_reasons ELSE leads.score_reasons END,
+            updated_at = NOW()
+          RETURNING id, dedupe_key
+        ),
+        linked_sources AS (
+          INSERT INTO lead_sources (lead_id, source_id, source_ref, confidence_tier, run_id)
+          SELECT ul.id, ib."sourceId", ib."sourceRef", 'MEDIUM', $2
+          FROM input_batch ib
+          JOIN upserted_leads ul ON ib."dedupeKey" = ul.dedupe_key
+          ON CONFLICT (lead_id, source_id, source_ref) DO UPDATE SET run_id = EXCLUDED.run_id
+        )
+        INSERT INTO personnel (company_id, full_name, title, direct_email, direct_phone, dedupe_key, is_primary_decision_maker, run_id)
+        SELECT 
+          ul.id, 
+          ib."dmName", 
+          COALESCE(ib."dmTitle", 'Decision Maker'), 
+          ib."dmEmail", 
+          ib."dmPhone",
+          CASE WHEN ib."dmEmail" IS NOT NULL AND ib."dmEmail" != '' THEN 'em:' || LOWER(ib."dmEmail") ELSE 'pn:' || ul.id || ':' || LOWER(REGEXP_REPLACE(ib."dmName", '[^a-z0-9]', '', 'g')) END,
+          TRUE,
+          $2
+        FROM input_batch ib
+        JOIN upserted_leads ul ON ib."dedupeKey" = ul.dedupe_key
+        WHERE ib."hasDm" = TRUE AND ib."dmName" IS NOT NULL AND length(trim(ib."dmName")) >= 3
+        ON CONFLICT (dedupe_key) DO UPDATE SET
+          direct_email = COALESCE(personnel.direct_email, EXCLUDED.direct_email),
+          direct_phone = COALESCE(personnel.direct_phone, EXCLUDED.direct_phone),
+          run_id = COALESCE(EXCLUDED.run_id, personnel.run_id),
+          updated_at = NOW();
+      `;
 
+      await client.query(bulkSql, [JSON.stringify(preparedBatch), runId]);
       await client.query("COMMIT");
-      return dedupedCount;
+
+      return candidates.length;
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;

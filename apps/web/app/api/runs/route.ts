@@ -4,12 +4,8 @@ import { getDbPool } from "@/lib/db";
 import { isNeonConfigured } from "@/lib/config";
 import { NeonStore, type LeadCandidate, type RawRecord } from "@pyro/core";
 import {
-  executeApifyActorWithWait,
+  startApifyActorRun,
   buildFacebookAdsUrl,
-  mapFacebookAdsItems,
-  mapLinkedinJobsItems,
-  mapGoogleSearchItems,
-  mapGooglePlacesItems,
 } from "@/lib/providers/apify";
 import {
   searchMoltsetsPeople,
@@ -22,7 +18,7 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60; // 60s Vercel serverless execution limit
+export const maxDuration = 60;
 
 const RunPayloadSchema = z.object({
   source: z.string().min(1),
@@ -67,7 +63,7 @@ export async function POST(req: NextRequest) {
     const store = new NeonStore(process.env.DATABASE_URL!);
 
     // =======================================================================
-    // 1. APIFY CLOUD SCRAPERS DISPATCH (With Async Smart Wait & State Sync)
+    // 1. APIFY ASYNC 202 ACCEPTED DISPATCH (<400ms Response Time)
     // =======================================================================
     if (providerId === "apify") {
       let actorId = "compass/crawler-google-places";
@@ -110,79 +106,35 @@ export async function POST(req: NextRequest) {
         };
       }
 
-      // Execute with smart 40-second polling buffer
-      const runOutcome = await executeApifyActorWithWait(actorId, actorInput, 40);
+      // Start the Apify run immediately (<300ms)
+      const { apifyRunId, defaultDatasetId } = await startApifyActorRun(actorId, actorInput);
 
-      // Persist Apify Run ID & Dataset ID into Neon runs table
+      // Persist in Neon runs row
       const insertRes = await pool.query(
         `INSERT INTO runs (source_id, input, status, started_at)
-         VALUES ($1, $2, $3, NOW()) RETURNING id`,
+         VALUES ($1, $2, 'running', NOW()) RETURNING id`,
         [
           `apify:${toolId}`,
-          JSON.stringify({
-            ...input,
-            toolId,
-            apifyRunId: runOutcome.apifyRunId,
-            defaultDatasetId: runOutcome.defaultDatasetId,
-          }),
-          runOutcome.status === "SUCCEEDED" ? "succeeded" : "running",
+          JSON.stringify({ ...input, toolId, apifyRunId, defaultDatasetId }),
         ]
       );
       const runId = insertRes.rows[0].id;
 
-      // If actor concluded within 40 seconds, map and ingest immediately
-      if (runOutcome.status === "SUCCEEDED" && runOutcome.items.length > 0) {
-        let rawRecords: RawRecord[] = [];
-        let candidates: LeadCandidate[] = [];
-
-        if (toolId === "facebook-ads") {
-          const out = mapFacebookAdsItems(runOutcome.items, String(input.query || "ads"));
-          rawRecords = out.rawRecords;
-          candidates = out.candidates;
-        } else if (toolId === "linkedin-jobs") {
-          const out = mapLinkedinJobsItems(runOutcome.items, String(input.keywords || "jobs"));
-          rawRecords = out.rawRecords;
-          candidates = out.candidates;
-        } else if (toolId === "google-search") {
-          const out = mapGoogleSearchItems(runOutcome.items, String(input.queries || "search"));
-          rawRecords = out.rawRecords;
-          candidates = out.candidates;
-        } else {
-          const out = mapGooglePlacesItems(runOutcome.items, String(input.keyword || "places"));
-          rawRecords = out.rawRecords;
-          candidates = out.candidates;
-        }
-
-        const batch = rawRecords.map((raw, i) => ({ raw, candidate: candidates[i]! }));
-        const dedupedCount = await store.ingestBatch(runId, `apify:${toolId}`, batch);
-
-        await pool.query(
-          `UPDATE runs SET records_raw = $1, records_deduped = $2, finished_at = NOW() WHERE id = $3`,
-          [rawRecords.length, dedupedCount, runId]
-        );
-
-        return NextResponse.json({
+      // Return 202 Accepted immediately to avoid Vercel 504 timeouts
+      return NextResponse.json(
+        {
           runId,
-          apifyRunId: runOutcome.apifyRunId,
-          status: "succeeded",
-          recordsFound: rawRecords.length,
-          recordsDeduped: dedupedCount,
-          apifyConsoleUrl: `https://console.apify.com/view/runs/${runOutcome.apifyRunId}`,
-        });
-      }
-
-      // If actor is still running, return running status with direct Apify Console URL
-      return NextResponse.json({
-        runId,
-        apifyRunId: runOutcome.apifyRunId,
-        status: "running",
-        message: "Actor is actively crawling on Apify cloud. The UI monitor will sync automatically when completed.",
-        apifyConsoleUrl: `https://console.apify.com/view/runs/${runOutcome.apifyRunId}`,
-      });
+          apifyRunId,
+          status: "running",
+          message: "Actor run dispatched to Apify cloud. Reconciling asynchronously.",
+          apifyConsoleUrl: `https://console.apify.com/view/runs/${apifyRunId}`,
+        },
+        { status: 202 }
+      );
     }
 
     // =======================================================================
-    // 2. MOLTSETS B2B IDENTITY DISPATCH (With Company Diversity Quotas)
+    // 2. MOLTSETS B2B DISPATCH (Fast API Execution)
     // =======================================================================
     if (providerId === "moltsets") {
       const insertRes = await pool.query(
@@ -192,7 +144,6 @@ export async function POST(req: NextRequest) {
       );
       const runId = insertRes.rows[0].id;
 
-      // Automated Zero-Cost Suppression Pre-check
       let excludedDomains: string[] = [];
       try {
         const suppRes = await pool.query(`SELECT value FROM suppression WHERE kind = 'domain' LIMIT 100`);
@@ -208,8 +159,6 @@ export async function POST(req: NextRequest) {
           seniority = ["Owner", "C Suite", "Partner", "VP", "Head", "Director"];
         } else if (input.seniority_preset === "owners_only") {
           seniority = ["Owner", "Partner"];
-        } else if (input.seniority_preset === "c_suite_only") {
-          seniority = ["C Suite"];
         }
 
         const out = await searchMoltsetsPeople({
@@ -220,18 +169,14 @@ export async function POST(req: NextRequest) {
           industry: input.industry ? String(input.industry) : undefined,
           employee_range: input.employee_range ? String(input.employee_range) : undefined,
           limit: Number(input.limit || 20),
-          maxPerCompany: Number(input.maxPerCompany || 2), // Enforces practice diversity
+          maxPerCompany: Number(input.maxPerCompany || 2),
           exclude_company_domain: excludedDomains,
         });
         rawRecords = out.rawRecords;
         candidates = out.candidates;
       } else if (toolId === "batch_domains") {
         const rawDomains = String(input.domains || "");
-        const domainList = rawDomains
-          .split(/[\n,]/)
-          .map((d) => d.trim().replace(/^https?:\/\//, "").replace(/\/.*$/, ""))
-          .filter(Boolean);
-
+        const domainList = rawDomains.split(/[\n,]/).map((d) => d.trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "")).filter(Boolean);
         const out = await findDecisionMakersForDomains(domainList, {
           title: input.title ? String(input.title) : undefined,
           limit: Number(input.limit || 25),
@@ -278,7 +223,7 @@ export async function POST(req: NextRequest) {
     }
 
     // =======================================================================
-    // 3. SYNTHETIC LOCAL TESTING MOCK DISPATCH
+    // 3. SYNTHETIC LOCAL MOCK DISPATCH
     // =======================================================================
     const insertRes = await pool.query(
       `INSERT INTO runs (source_id, input, status, started_at) VALUES ('mock', '{}', 'running', NOW()) RETURNING id`
@@ -286,28 +231,12 @@ export async function POST(req: NextRequest) {
     const runId = insertRes.rows[0].id;
     const timestamp = Date.now();
     const rawRecords = [
-      { sourceId: "mock", sourceRef: `m1_${timestamp}`, payload: { name: "Glow Aesthetics & Skin" } },
-      { sourceId: "mock", sourceRef: `m2_${timestamp}`, payload: { name: "Columbus Dermatology Clinic" } },
+      { sourceId: "mock", sourceRef: `m1_${timestamp}`, payload: { name: "Glow Aesthetics" } },
+      { sourceId: "mock", sourceRef: `m2_${timestamp}`, payload: { name: "Columbus Skin Lab" } },
     ];
     const candidates: LeadCandidate[] = [
-      {
-        name: "Glow Aesthetics & Skin",
-        niche: "med spa",
-        phone: "+16145550101",
-        website: "https://glowaesthetics.example.com",
-        city: "Columbus",
-        state: "OH",
-        decisionMaker: { name: "Dr. Sarah Vance", title: "Medical Director", confidence: "HIGH" },
-        signals: [{ type: "ad_active", value: true }, { type: "rating", value: 4.9 }],
-      },
-      {
-        name: "Columbus Dermatology Clinic",
-        niche: "med spa",
-        phone: "+16145550102",
-        city: "Columbus",
-        state: "OH",
-        signals: [{ type: "no_website", value: true }],
-      },
+      { name: "Glow Aesthetics", niche: "med spa", phone: "+16145550101", website: "https://glowaesthetics.example.com", city: "Columbus", state: "OH", decisionMaker: { name: "Dr. Sarah Vance", title: "Medical Director", confidence: "HIGH" }, signals: [{ type: "ad_active", value: true }, { type: "rating", value: 4.9 }] },
+      { name: "Columbus Skin Lab", niche: "med spa", phone: "+16145550102", city: "Columbus", state: "OH", signals: [{ type: "no_website", value: true }] },
     ];
 
     const batch = rawRecords.map((raw, i) => ({ raw, candidate: candidates[i]! }));

@@ -61,8 +61,7 @@ export class NeonStore {
 
   /**
    * SET-BASED BULK INGESTION CTE (O(1) Single Database Roundtrip)
-   * Unpacks JSONB in Postgres, bulk inserts raw records, upserts canonical leads,
-   * assigns run provenance, and inserts personnel in a single atomic transaction.
+   * With complete, type-safe decision-maker string narrowing.
    */
   async ingestBatch(
     runId: string,
@@ -85,7 +84,7 @@ export class NeonStore {
         if (mapRes.rows.length) savedMappings = mapRes.rows[0].mappings || {};
       } catch {}
 
-      // 2. Prepare structured JSON array for set-based PostgreSQL CTE
+      // 2. Prepare structured JSON array with strict lexical type narrowing
       const preparedBatch = candidates.map(({ raw, candidate }) => {
         const customFields: Record<string, any> = {};
         const payload = raw.payload as Record<string, any>;
@@ -111,12 +110,14 @@ export class NeonStore {
         const dedupeKey = generateDedupeKey(candidate);
         const { score, reasons } = calculateLeadScore(candidate);
 
+        // Type-Safe Lexical Narrowing (Eliminates line 116 undefined error)
         const dm = candidate.decisionMaker;
-        const hasValidDm = Boolean(dm && typeof dm.name === "string" && dm.name.trim().length >= 3);
-        const dmName = hasValidDm ? dm!.name.trim() : null;
-        const dmTitle = dm?.title?.trim() || "Decision Maker";
-        const dmEmail = dm?.email && dm.email.includes("@") ? dm.email.toLowerCase().trim() : null;
-        const dmPhone = dm?.phone?.trim() || null;
+        const rawDmName = dm && typeof dm.name === "string" ? dm.name.trim() : "";
+        const hasValidDm = rawDmName.length >= 3;
+        const dmName = hasValidDm ? rawDmName : null;
+        const dmTitle = dm?.title && typeof dm.title === "string" ? dm.title.trim() : "Decision Maker";
+        const dmEmail = dm?.email && typeof dm.email === "string" && dm.email.includes("@") ? dm.email.toLowerCase().trim() : null;
+        const dmPhone = dm?.phone && typeof dm.phone === "string" ? dm.phone.trim() : null;
 
         return {
           sourceId,

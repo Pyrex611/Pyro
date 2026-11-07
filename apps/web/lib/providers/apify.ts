@@ -510,3 +510,63 @@ export async function runApifyGmapsActor(input: {
   );
   return mapGooglePlacesItems(outcome.items, input.keyword);
 }
+
+// Add inside apps/web/lib/providers/apify.ts:
+
+export async function runApifyWebsiteContentCrawler(input: {
+  url: string;
+  companyName?: string;
+}): Promise<{ rawRecords: RawRecord[]; candidates: LeadCandidate[] }> {
+  const actorInput = {
+    startUrls: [{ url: input.url.startsWith("http") ? input.url : `https://${input.url}` }],
+    maxCrawlPages: 5,
+    crawlerType: "cheerio",
+  };
+
+  // Uses Apify's official website content crawler actor
+  const items = await callApifyActor<any>("apify/website-content-crawler", actorInput, 45).catch(() => []);
+
+  const rawRecords: RawRecord[] = [];
+  const candidates: LeadCandidate[] = [];
+
+  for (const item of items) {
+    const text = item.text || "";
+    // Parse emails from crawled webpage text
+    const emailMatches = text.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/gi) || [];
+    const uniqueEmails = Array.from(new Set(emailMatches.map((e: string) => e.toLowerCase()))).filter(
+      (e) => !e.includes("wixpress") && !e.includes("sentry") && !e.includes("example.com")
+    );
+
+    // Parse phone numbers
+    const phoneMatches = text.match(/(?:\+?1\s*(?:[.-]\s*)?)?(?:\(\s*([2-9]1[02-9]|[2-9][02-8]1|[2-9][02-8][02-9])\s*\)|([2-9]1[02-9]|[2-9][02-8]1|[2-9][02-8][02-9]))\s*(?:[.-]\s*)?([2-9]1[02-9]|[2-9][02-8][02-9])\s*(?:[.-]\s*)?([0-9]{4})/gi) || [];
+
+    const raw: RawRecord = {
+      sourceId: "apify:website-crawler",
+      sourceRef: `web_${Buffer.from(item.url || input.url).toString("base64").slice(0, 16)}`,
+      payload: item,
+    };
+
+    const candidate: LeadCandidate = {
+      name: input.companyName || "Discovered Clinic",
+      niche: "Healthcare",
+      website: item.url || input.url,
+      email: (uniqueEmails[0] as string | undefined),
+      phone: (phoneMatches[0] as string | undefined),
+      decisionMaker: uniqueEmails.length > 0 ? {
+        name: "Clinic Contact",
+        title: "Medical Staff",
+        email: uniqueEmails[0],
+        confidence: "MEDIUM",
+      } : undefined,
+      signals: [
+        { type: "crawled_emails", value: uniqueEmails },
+        { type: "crawled_phones", value: phoneMatches.slice(0, 3) },
+      ],
+    };
+
+    rawRecords.push(raw);
+    candidates.push(candidate);
+  }
+
+  return { rawRecords, candidates };
+}

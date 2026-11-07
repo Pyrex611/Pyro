@@ -12,6 +12,10 @@ export default function LeadsPage() {
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
   const [companyPersonnel, setCompanyPersonnel] = useState<any[]>([]);
 
+  // Enrichment Loading State
+  const [enriching, setEnriching] = useState(false);
+  const [enrichMessage, setEnrichMessage] = useState<string | null>(null);
+
   // Pagination State
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -46,7 +50,7 @@ export default function LeadsPage() {
     }
   }
 
-  // Fetch attached personnel when a company is selected for drawer view
+  // Fetch attached personnel when a company is opened in drawer
   useEffect(() => {
     if (selectedItem && view === "companies") {
       fetch(`/api/leads?view=personnel&search=${encodeURIComponent(selectedItem.name)}`)
@@ -58,12 +62,53 @@ export default function LeadsPage() {
     }
   }, [selectedItem, view]);
 
+  // IN-DRAWER ENRICHMENT ACTION
+  async function handleEnrichEntity() {
+    if (!selectedItem) return;
+    setEnriching(true);
+    setEnrichMessage(null);
+
+    try {
+      const res = await fetch("/api/enrich", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          entityId: selectedItem.id,
+          entityType: view === "companies" ? "company" : "personnel",
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.error || "Enrichment failed");
+      }
+
+      setEnrichMessage(data.message || "Enrichment completed!");
+
+      // Update drawer state reactively in memory
+      if (data.entity) {
+        setSelectedItem(data.entity);
+      }
+      if (data.personnel) {
+        setCompanyPersonnel(data.personnel);
+      }
+
+      // Refresh background table
+      loadData();
+    } catch (err: any) {
+      alert(`Enrichment Error: ${err.message}`);
+    } finally {
+      setEnriching(false);
+    }
+  }
+
   function handleViewToggle(newView: "companies" | "personnel") {
     if (newView === view) return;
     setView(newView);
     setPage(1);
     setSelectedIds(new Set());
     setSelectedItem(null);
+    setEnrichMessage(null);
   }
 
   function toggleSelectAll() {
@@ -117,17 +162,24 @@ export default function LeadsPage() {
   const startRecord = (page - 1) * pageSize + 1;
   const endRecord = Math.min(page * pageSize, total);
 
+  // Check enrichment provenance stamps
+  const isCompanyEnriched = Boolean(selectedItem?.custom_fields?.last_enriched_at);
+  const enrichmentTool = selectedItem?.custom_fields?.enrichment_tool || "Apify / MoltSets";
+  const lastEnrichedDate = selectedItem?.custom_fields?.last_enriched_at
+    ? new Date(selectedItem.custom_fields.last_enriched_at).toLocaleDateString()
+    : null;
+
   return (
     <div className="space-y-4">
       {/* Title Header */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Leads Explorer</h1>
         <p className="text-sm text-gray-500">
-          Canonical accounts and personnel records resolved across all scraper runs.
+          Canonical accounts and verified decision-maker roster.
         </p>
       </div>
 
-      {/* Filter & Search Ribbon */}
+      {/* Filter Ribbon */}
       <div className="flex flex-wrap items-center gap-3">
         <input
           type="text"
@@ -155,9 +207,7 @@ export default function LeadsPage() {
         </div>
       </div>
 
-      {/* ================================================================= */}
-      {/* CENTRALIZED DYNAMIC ISLAND MENU HEADER (DIRECTLY ABOVE TABLE)     */}
-      {/* ================================================================= */}
+      {/* Centralized Dynamic Island Header directly above table */}
       <DynamicIsland
         view={view}
         onViewChange={handleViewToggle}
@@ -165,9 +215,7 @@ export default function LeadsPage() {
         personnelCount={view === "personnel" ? total : undefined}
       />
 
-      {/* ================================================================= */}
-      {/* 1. PRACTICES / CLINICS TABLE                                      */}
-      {/* ================================================================= */}
+      {/* Companies Table */}
       {view === "companies" && (
         <div className="card overflow-hidden p-0 relative shadow-sm">
           <table className="w-full text-left text-sm border-collapse">
@@ -182,7 +230,7 @@ export default function LeadsPage() {
                   />
                 </th>
                 <th className="py-3 px-4">Practice / Clinic</th>
-                <th className="py-3 px-4">Fit Score</th>
+                <th className="py-3 px-4">Score</th>
                 <th className="py-3 px-4">General Phone</th>
                 <th className="py-3 px-4">Domain</th>
                 <th className="py-3 px-4">Primary Decision Maker</th>
@@ -201,19 +249,26 @@ export default function LeadsPage() {
                   return (
                     <tr
                       key={c.id}
-                      onClick={() => setSelectedItem(c)}
+                      onClick={() => { setSelectedItem(c); setEnrichMessage(null); }}
                       className={`border-b transition-colors cursor-pointer ${
-                        isSelected ? "bg-[#e6f2ee]/60" : "hover:bg-[#e6f2ee]/30"
+                        isSelected ? "bg-brand-subtle/60" : "hover:bg-brand-subtle/30"
                       }`}
                       style={{ borderColor: "var(--border)" }}
                     >
                       <td className="py-3 px-4" onClick={(e) => toggleRow(c.id, e)}>
                         <input type="checkbox" checked={isSelected} onChange={() => {}} className="rounded cursor-pointer" />
                       </td>
-                      <td className="py-3 px-4 font-medium">{c.name}</td>
+                      <td className="py-3 px-4 font-medium flex items-center gap-2">
+                        <span>{c.name}</span>
+                        {c.custom_fields?.last_enriched_at && (
+                          <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded font-semibold" title="Enriched via Apify/MoltSets">
+                            Enriched
+                          </span>
+                        )}
+                      </td>
                       <td className="py-3 px-4">
                         <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${
-                          c.score >= 75 ? "bg-[#e6f2ee] text-[#0f6e56]" : c.score >= 40 ? "bg-amber-50 text-amber-700" : "bg-gray-100 text-gray-500"
+                          c.score >= 75 ? "bg-brand-subtle text-brand" : c.score >= 40 ? "bg-amber-50 text-amber-700" : "bg-gray-100 text-gray-500"
                         }`}>
                           {c.score}/100
                         </span>
@@ -221,7 +276,7 @@ export default function LeadsPage() {
                       <td className="py-3 px-4 font-mono text-xs">{c.phone_e164 || "—"}</td>
                       <td className="py-3 px-4">
                         {c.website ? (
-                          <a href={c.website} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-xs underline text-[#0f6e56]">
+                          <a href={c.website} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-xs underline text-brand">
                             {c.domain || "Visit"}
                           </a>
                         ) : (
@@ -260,9 +315,7 @@ export default function LeadsPage() {
         </div>
       )}
 
-      {/* ================================================================= */}
-      {/* 2. PERSONNEL / DOCTORS TABLE                                      */}
-      {/* ================================================================= */}
+      {/* Personnel Table */}
       {view === "personnel" && (
         <div className="card overflow-hidden p-0 relative shadow-sm">
           <table className="w-full text-left text-sm border-collapse">
@@ -295,9 +348,9 @@ export default function LeadsPage() {
                   return (
                     <tr
                       key={p.id}
-                      onClick={() => setSelectedItem(p)}
+                      onClick={() => { setSelectedItem(p); setEnrichMessage(null); }}
                       className={`border-b transition-colors cursor-pointer ${
-                        isSelected ? "bg-[#e6f2ee]/60" : "hover:bg-[#e6f2ee]/30"
+                        isSelected ? "bg-brand-subtle/60" : "hover:bg-brand-subtle/30"
                       }`}
                       style={{ borderColor: "var(--border)" }}
                     >
@@ -325,7 +378,7 @@ export default function LeadsPage() {
                       <td className="py-3 px-4 text-xs text-gray-800 font-medium">{p.company_name || p.company_domain || "—"}</td>
                       <td className="py-3 px-4 text-xs">
                         {p.linkedin_url ? (
-                          <a href={p.linkedin_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-[#0f6e56] underline font-semibold">
+                          <a href={p.linkedin_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-brand underline font-semibold">
                             Profile ↗
                           </a>
                         ) : "—"}
@@ -351,8 +404,8 @@ export default function LeadsPage() {
 
       {/* Floating Action Bar */}
       {selectedIds.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-white border border-[#0f6e56] rounded-xl shadow-2xl px-6 py-3 flex items-center gap-4">
-          <div className="text-xs font-semibold text-[#0f6e56]">{selectedIds.size} {view} selected</div>
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-white border border-brand rounded-xl shadow-2xl px-6 py-3 flex items-center gap-4">
+          <div className="text-xs font-semibold text-brand">{selectedIds.size} {view} selected</div>
           <div className="h-4 w-px bg-gray-200"></div>
           <button onClick={exportSelectedCsv} className="btn-primary text-xs py-1.5 px-3">Download CSV ({selectedIds.size})</button>
           <button onClick={handleDeleteSelected} disabled={deleting} className="btn-outline text-xs text-red-600 border-red-300 hover:bg-red-50 py-1.5 px-3 font-semibold">
@@ -362,7 +415,7 @@ export default function LeadsPage() {
         </div>
       )}
 
-      {/* Contextual Detail Drawer */}
+      {/* Slide-Over Drawer with On-Demand Live Enrichment */}
       {selectedItem && (
         <div className="fixed inset-0 z-50 flex justify-end bg-black/30 backdrop-blur-sm" onClick={() => setSelectedItem(null)}>
           <div
@@ -378,13 +431,50 @@ export default function LeadsPage() {
               <button onClick={() => setSelectedItem(null)} className="text-sm font-semibold p-1 hover:bg-gray-100 rounded text-gray-400">✕</button>
             </div>
 
-            {/* Practice Details Drawer */}
+            {/* ENRICHMENT STATUS & PROVENANCE CARD */}
+            <div className="p-3.5 rounded-lg border bg-[#f7f7f5] text-xs space-y-2" style={{ borderColor: "var(--border)" }}>
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-gray-700 uppercase tracking-wider text-[10px]">Enrichment Ledger</span>
+                <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
+                  isCompanyEnriched ? "bg-emerald-100 text-emerald-800" : "bg-gray-200 text-gray-600"
+                }`}>
+                  {isCompanyEnriched ? "✓ Enriched" : "Never Enriched"}
+                </span>
+              </div>
+              {isCompanyEnriched ? (
+                <div className="text-gray-600 space-y-0.5 text-[11px]">
+                  <div>Last Enriched: <b>{lastEnrichedDate}</b></div>
+                  <div>Provider / Tool: <b className="font-mono text-[10px]">{enrichmentTool}</b></div>
+                </div>
+              ) : (
+                <p className="text-gray-500 text-[11px]">
+                  Trigger live website content scraping and decision-maker resolution for this entity.
+                </p>
+              )}
+
+              {/* LIVE ENRICHMENT ACTION BUTTON */}
+              <button
+                onClick={handleEnrichEntity}
+                disabled={enriching}
+                className="btn-primary w-full justify-center text-xs py-2 mt-1"
+              >
+                {enriching ? "Crawling & Resolving Decision Makers..." : isCompanyEnriched ? "↻ Re-Enrich & Refresh" : "⚡ Enrich Company & Find DM"}
+              </button>
+
+              {enrichMessage && (
+                <div className="p-2 rounded bg-emerald-50 text-emerald-800 text-[11px] font-medium border border-emerald-200">
+                  {enrichMessage}
+                </div>
+              )}
+            </div>
+
+            {/* Company Details Drawer */}
             {view === "companies" && (
               <>
-                <div className="card space-y-3 bg-[#e6f2ee]/40 border-[#0f6e56]">
+                <div className="card space-y-3 bg-brand-subtle/40 border-brand">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-[#0f6e56]">Commercial Fit Score</span>
-                    <span className="text-xl font-bold text-[#0f6e56]">{selectedItem.score}/100</span>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-brand">Commercial Fit Score</span>
+                    <span className="text-xl font-bold text-brand">{selectedItem.score}/100</span>
                   </div>
                   <ul className="text-xs space-y-1">
                     {selectedItem.score_reasons?.map((reason: string, idx: number) => (
@@ -396,11 +486,11 @@ export default function LeadsPage() {
                 {/* Attached Personnel Roster */}
                 <div className="card space-y-3">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold">Practice Personnel Roster ({companyPersonnel.length})</h3>
-                    <span className="text-[11px] text-[#0f6e56] font-medium">Verified Staff</span>
+                    <h3 className="text-sm font-semibold">Personnel & Physician Roster ({companyPersonnel.length})</h3>
+                    <span className="text-[11px] text-brand font-medium">Verified Staff</span>
                   </div>
                   {companyPersonnel.length === 0 ? (
-                    <p className="text-xs text-gray-400">No staff attached to this clinic yet. Run MoltSets to enrich.</p>
+                    <p className="text-xs text-gray-400">No staff attached yet. Click 'Enrich Company & Find DM' above to crawl website and resolve doctors.</p>
                   ) : (
                     <div className="divide-y text-xs">
                       {companyPersonnel.map((staff) => (
@@ -431,8 +521,8 @@ export default function LeadsPage() {
             {/* Personnel Details Drawer */}
             {view === "personnel" && (
               <>
-                <div className="card space-y-3 bg-[#e6f2ee]/40 border-[#0f6e56]">
-                  <div className="text-xs font-semibold uppercase tracking-wider text-[#0f6e56]">Contact Dossier</div>
+                <div className="card space-y-3 bg-brand-subtle/40 border-brand">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-brand">Contact Dossier</div>
                   <div className="text-sm">
                     <div className="font-bold text-base">{selectedItem.full_name}</div>
                     <div className="text-gray-600 text-xs">{selectedItem.title}</div>
@@ -445,6 +535,16 @@ export default function LeadsPage() {
                     <div className="py-1.5 flex justify-between"><span className="text-gray-400">Direct Email:</span><span className="font-mono font-medium text-emerald-800">{selectedItem.direct_email || "—"}</span></div>
                     <div className="py-1.5 flex justify-between"><span className="text-gray-400">Deliverability:</span><span className="font-bold text-emerald-800">{selectedItem.email_risk_score || "Unverified"}</span></div>
                     <div className="py-1.5 flex justify-between"><span className="text-gray-400">Direct Cell:</span><span className="font-mono font-medium">{selectedItem.direct_phone || "—"}</span></div>
+                    <div className="py-1.5 flex justify-between">
+                      <span className="text-gray-400">LinkedIn:</span>
+                      <span>
+                        {selectedItem.linkedin_url ? (
+                          <a href={selectedItem.linkedin_url} target="_blank" rel="noreferrer" className="text-brand underline font-semibold">
+                            Profile ↗
+                          </a>
+                        ) : "—"}
+                      </span>
+                    </div>
                   </div>
                 </div>
 

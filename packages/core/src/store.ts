@@ -60,8 +60,8 @@ export class NeonStore {
   }
 
   /**
-   * SET-BASED BULK INGESTION CTE (O(1) Single Database Roundtrip)
-   * With complete, type-safe decision-maker string narrowing.
+   * SET-BASED BULK INGESTION CTE (Atomic Single-Trip with Intra-Batch Deduplication)
+   * Resolves intra-batch duplicate key collisions using window functions before upserting.
    */
   async ingestBatch(
     runId: string,
@@ -110,7 +110,6 @@ export class NeonStore {
         const dedupeKey = generateDedupeKey(candidate);
         const { score, reasons } = calculateLeadScore(candidate);
 
-        // Type-Safe Lexical Narrowing (Eliminates line 116 undefined error)
         const dm = candidate.decisionMaker;
         const rawDmName = dm && typeof dm.name === "string" ? dm.name.trim() : "";
         const hasValidDm = rawDmName.length >= 3;
@@ -146,9 +145,9 @@ export class NeonStore {
         };
       });
 
-      // 3. EXECUTE SINGLE-TRIP ATOMIC SET-BASED CTE
+      // 3. EXECUTE SET-BASED CTE WITH INTRA-BATCH DEDUPLICATION
       const bulkSql = `
-        WITH input_batch AS (
+        WITH raw_input AS (
           SELECT * FROM jsonb_to_recordset($1::jsonb) AS (
             "sourceId" TEXT, "sourceRef" TEXT, "rawPayload" JSONB,
             "name" TEXT, "niche" TEXT, "phone" TEXT, "email" TEXT, "website" TEXT,
@@ -157,10 +156,34 @@ export class NeonStore {
             "hasDm" BOOLEAN, "dmName" TEXT, "dmTitle" TEXT, "dmEmail" TEXT, "dmPhone" TEXT
           )
         ),
+        -- Step A: Deduplicate raw records by (sourceId, sourceRef)
+        distinct_raw AS (
+          SELECT * FROM (
+            SELECT *,
+                   ROW_NUMBER() OVER (
+                     PARTITION BY "sourceId", "sourceRef" 
+                     ORDER BY 1
+                   ) as rn
+            FROM raw_input
+          ) sub
+          WHERE rn = 1
+        ),
         inserted_raw AS (
           INSERT INTO raw_records (run_id, source_id, source_ref, payload)
-          SELECT $2, "sourceId", "sourceRef", "rawPayload" FROM input_batch
+          SELECT $2, "sourceId", "sourceRef", "rawPayload" FROM distinct_raw
           ON CONFLICT (run_id, source_id, source_ref) DO NOTHING
+        ),
+        -- Step B: Intra-Batch Deduplication for Leads (Prevents ON CONFLICT DO UPDATE twice in same query)
+        distinct_leads AS (
+          SELECT * FROM (
+            SELECT *,
+                   ROW_NUMBER() OVER (
+                     PARTITION BY "dedupeKey" 
+                     ORDER BY ("phone" IS NOT NULL) DESC, ("email" IS NOT NULL) DESC, "score" DESC
+                   ) as rn
+            FROM raw_input
+          ) sub
+          WHERE rn = 1
         ),
         upserted_leads AS (
           INSERT INTO leads (
@@ -170,7 +193,7 @@ export class NeonStore {
           SELECT 
             "name", "niche", "phone", "email", "website", "domain", "address", "city", "state", "zip",
             "signals", "score", "scoreReasons", "dedupeKey", "customFields", NOW()
-          FROM input_batch
+          FROM distinct_leads
           ON CONFLICT (dedupe_key) DO UPDATE SET
             phone_e164 = COALESCE(leads.phone_e164, EXCLUDED.phone_e164),
             email = COALESCE(leads.email, EXCLUDED.email),
@@ -183,26 +206,54 @@ export class NeonStore {
             updated_at = NOW()
           RETURNING id, dedupe_key
         ),
+        -- Step C: Deduplicate lead_sources by (lead_id, sourceId, sourceRef)
+        distinct_lead_sources AS (
+          SELECT * FROM (
+            SELECT ul.id as lead_id, ri."sourceId", ri."sourceRef",
+                   ROW_NUMBER() OVER (
+                     PARTITION BY ul.id, ri."sourceId", ri."sourceRef" 
+                     ORDER BY 1
+                   ) as rn
+            FROM raw_input ri
+            JOIN upserted_leads ul ON ri."dedupeKey" = ul.dedupe_key
+          ) sub
+          WHERE rn = 1
+        ),
         linked_sources AS (
           INSERT INTO lead_sources (lead_id, source_id, source_ref, confidence_tier, run_id)
-          SELECT ul.id, ib."sourceId", ib."sourceRef", 'MEDIUM', $2
-          FROM input_batch ib
-          JOIN upserted_leads ul ON ib."dedupeKey" = ul.dedupe_key
+          SELECT lead_id, "sourceId", "sourceRef", 'MEDIUM', $2
+          FROM distinct_lead_sources
           ON CONFLICT (lead_id, source_id, source_ref) DO UPDATE SET run_id = EXCLUDED.run_id
+        ),
+        -- Step D: Intra-Batch Deduplication for Personnel (Preserves all unique doctors across clinics)
+        distinct_personnel AS (
+          SELECT * FROM (
+            SELECT 
+              ul.id as company_id, 
+              ri."dmName" as full_name, 
+              COALESCE(ri."dmTitle", 'Decision Maker') as title, 
+              ri."dmEmail" as direct_email, 
+              ri."dmPhone" as direct_phone,
+              CASE 
+                WHEN ri."dmEmail" IS NOT NULL AND ri."dmEmail" != '' THEN 'em:' || LOWER(ri."dmEmail") 
+                ELSE 'pn:' || ul.id || ':' || LOWER(REGEXP_REPLACE(ri."dmName", '[^a-z0-9]', '', 'g')) 
+              END as dedupe_key,
+              ROW_NUMBER() OVER (
+                PARTITION BY CASE 
+                  WHEN ri."dmEmail" IS NOT NULL AND ri."dmEmail" != '' THEN 'em:' || LOWER(ri."dmEmail") 
+                  ELSE 'pn:' || ul.id || ':' || LOWER(REGEXP_REPLACE(ri."dmName", '[^a-z0-9]', '', 'g')) 
+                END
+                ORDER BY (ri."dmEmail" IS NOT NULL) DESC
+              ) as rn
+            FROM raw_input ri
+            JOIN upserted_leads ul ON ri."dedupeKey" = ul.dedupe_key
+            WHERE ri."hasDm" = TRUE AND ri."dmName" IS NOT NULL AND length(trim(ri."dmName")) >= 3
+          ) sub
+          WHERE rn = 1
         )
         INSERT INTO personnel (company_id, full_name, title, direct_email, direct_phone, dedupe_key, is_primary_decision_maker, run_id)
-        SELECT 
-          ul.id, 
-          ib."dmName", 
-          COALESCE(ib."dmTitle", 'Decision Maker'), 
-          ib."dmEmail", 
-          ib."dmPhone",
-          CASE WHEN ib."dmEmail" IS NOT NULL AND ib."dmEmail" != '' THEN 'em:' || LOWER(ib."dmEmail") ELSE 'pn:' || ul.id || ':' || LOWER(REGEXP_REPLACE(ib."dmName", '[^a-z0-9]', '', 'g')) END,
-          TRUE,
-          $2
-        FROM input_batch ib
-        JOIN upserted_leads ul ON ib."dedupeKey" = ul.dedupe_key
-        WHERE ib."hasDm" = TRUE AND ib."dmName" IS NOT NULL AND length(trim(ib."dmName")) >= 3
+        SELECT company_id, full_name, title, direct_email, direct_phone, dedupe_key, TRUE, $2
+        FROM distinct_personnel
         ON CONFLICT (dedupe_key) DO UPDATE SET
           direct_email = COALESCE(personnel.direct_email, EXCLUDED.direct_email),
           direct_phone = COALESCE(personnel.direct_phone, EXCLUDED.direct_phone),

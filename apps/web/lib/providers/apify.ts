@@ -150,6 +150,18 @@ export async function executeApifyActorWithWait<T = any>(
   };
 }
 
+/**
+ * High-Level Synchronous Convenience Caller (Wraps executeApifyActorWithWait)
+ */
+export async function callApifyActor<T = any>(
+  actorId: string,
+  input: Record<string, any>,
+  timeoutSecs = 45
+): Promise<T[]> {
+  const outcome = await executeApifyActorWithWait<T>(actorId, input, timeoutSecs);
+  return outcome.items || [];
+}
+
 // ============================================================================
 // DATASET NORMALIZATION MAPPERS
 // ============================================================================
@@ -183,10 +195,8 @@ export function mapFacebookAdsItems(items: any[], query: string) {
       ? item.publisherPlatform.join(", ")
       : item.publisherPlatform || item.snapshot?.publisher_platform?.join(", ");
 
-    // Extract domain from ad link or profile URI
     let website = item.linkUrl || item.pageProfileUri || item.snapshot?.link_url;
     if (website && (website.includes("facebook.com") || website.includes("fb.me"))) {
-      // If website is just the FB page, keep it as profile URL
       website = item.linkUrl || undefined;
     }
 
@@ -345,7 +355,7 @@ export function mapGooglePlacesItems(items: any[], keyword: string) {
 }
 
 // ============================================================================
-// EXPORTED RUNNER WRAPPERS (Satisfies lib/executors.ts and server runners)
+// EXPORTED RUNNER WRAPPERS
 // ============================================================================
 
 export async function runApifyFacebookAdsScraper(input: {
@@ -357,6 +367,7 @@ export async function runApifyFacebookAdsScraper(input: {
   const actorInput = {
     urls: [{ url: targetUrl }],
     count: Math.min(Number(input.count || 20), 100),
+    "scrapePageAds.period": "",
     "scrapePageAds.activeStatus": "active",
     "scrapePageAds.sortBy": "impressions_desc",
     "scrapePageAds.countryCode": input.country || "ALL",
@@ -511,34 +522,45 @@ export async function runApifyGmapsActor(input: {
   return mapGooglePlacesItems(outcome.items, input.keyword);
 }
 
-// Add inside apps/web/lib/providers/apify.ts:
-
 export async function runApifyWebsiteContentCrawler(input: {
   url: string;
   companyName?: string;
 }): Promise<{ rawRecords: RawRecord[]; candidates: LeadCandidate[] }> {
+  const targetUrl = input.url.startsWith("http") ? input.url : `https://${input.url}`;
   const actorInput = {
-    startUrls: [{ url: input.url.startsWith("http") ? input.url : `https://${input.url}` }],
+    startUrls: [{ url: targetUrl }],
     maxCrawlPages: 5,
     crawlerType: "cheerio",
   };
 
-  // Uses Apify's official website content crawler actor
   const items = await callApifyActor<any>("apify/website-content-crawler", actorInput, 45).catch(() => []);
 
   const rawRecords: RawRecord[] = [];
   const candidates: LeadCandidate[] = [];
 
   for (const item of items) {
-    const text = item.text || "";
-    // Parse emails from crawled webpage text
-    const emailMatches = text.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/gi) || [];
-    const uniqueEmails = Array.from(new Set(emailMatches.map((e: string) => e.toLowerCase()))).filter(
-      (e) => !e.includes("wixpress") && !e.includes("sentry") && !e.includes("example.com")
-    );
+    const rawText = (item.text || "").slice(0, 150000); // ReDoS defense buffer
 
-    // Parse phone numbers
-    const phoneMatches = text.match(/(?:\+?1\s*(?:[.-]\s*)?)?(?:\(\s*([2-9]1[02-9]|[2-9][02-8]1|[2-9][02-8][02-9])\s*\)|([2-9]1[02-9]|[2-9][02-8]1|[2-9][02-8][02-9]))\s*(?:[.-]\s*)?([2-9]1[02-9]|[2-9][02-8][02-9])\s*(?:[.-]\s*)?([0-9]{4})/gi) || [];
+    const emailMatches = rawText.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/gi) || [];
+
+    // Clean, strictly-typed single-pass extraction
+    const uniqueEmails: string[] = [];
+    const seenEmails = new Set<string>();
+
+    for (const match of emailMatches) {
+      const lower = match.toLowerCase();
+      if (
+        !seenEmails.has(lower) &&
+        !lower.includes("wixpress") &&
+        !lower.includes("sentry") &&
+        !lower.includes("example.com")
+      ) {
+        seenEmails.add(lower);
+        uniqueEmails.push(lower);
+      }
+    }
+
+    const phoneMatches = rawText.match(/(?:\+?1\s*(?:[.-]\s*)?)?(?:\(\s*([2-9]1[02-9]|[2-9][02-8]1|[2-9][02-8][02-9])\s*\)|([2-9]1[02-9]|[2-9][02-8]1|[2-9][02-8][02-9]))\s*(?:[.-]\s*)?([2-9]1[02-9]|[2-9][02-8][02-9])\s*(?:[.-]\s*)?([0-9]{4})/gi) || [];
 
     const raw: RawRecord = {
       sourceId: "apify:website-crawler",
@@ -546,21 +568,24 @@ export async function runApifyWebsiteContentCrawler(input: {
       payload: item,
     };
 
+    const primaryEmail: string | undefined = uniqueEmails[0];
+    const primaryPhone: string | undefined = phoneMatches[0];
+
     const candidate: LeadCandidate = {
       name: input.companyName || "Discovered Clinic",
       niche: "Healthcare",
       website: item.url || input.url,
-      email: (uniqueEmails[0] as string | undefined),
-      phone: (phoneMatches[0] as string | undefined),
-      decisionMaker: uniqueEmails.length > 0 ? {
+      email: primaryEmail,
+      phone: primaryPhone,
+      decisionMaker: primaryEmail ? {
         name: "Clinic Contact",
         title: "Medical Staff",
-        email: uniqueEmails[0],
+        email: primaryEmail,
         confidence: "MEDIUM",
       } : undefined,
       signals: [
         { type: "crawled_emails", value: uniqueEmails },
-        { type: "crawled_phones", value: phoneMatches.slice(0, 3) },
+        ...(phoneMatches.length > 0 ? [{ type: "crawled_phones", value: phoneMatches.slice(0, 3) }] : []),
       ],
     };
 

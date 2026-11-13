@@ -32,7 +32,56 @@ export interface ProviderDefinition {
   tools: ToolDefinition[];
 }
 
+// Aesthetics and Medical Specialties for NPPES CMS Registry
+const AESTHETICS_TAXONOMY_PRESETS = [
+  { label: "Dermatology (Medical Directors)", value: "Dermatology" },
+  { label: "Plastic Surgery (Cosmetic & Reconstructive)", value: "Plastic Surgery" },
+  { label: "Facial Plastic Surgery", value: "Facial Plastic Surgery" },
+  { label: "Nurse Practitioner (Adult Health / Injectors)", value: "Nurse Practitioner" },
+  { label: "Ambulatory Health Care Facilities (Clinics)", value: "Ambulatory Health Care Facilities" },
+  { label: "Family Medicine (MedSpa Directors)", value: "Family Medicine" },
+];
+
+// Master Schema Registry embedded directly in the route component
 const REGISTRY: Record<string, ProviderDefinition> = {
+  nppes: {
+    id: "nppes",
+    name: "NPPES Medical Registry (CMS NPI)",
+    badge: "Federal Gold Standard ($0.00)",
+    description: "Official CMS National Provider Identifier database: 100% verified legal clinic names, official direct phones, physical addresses, and licensed Medical Directors.",
+    tools: [
+      {
+        id: "search_npi",
+        name: "Physician & Clinic Taxonomy Search",
+        description: "Discover verified medical practices and directors across US cities and states with official CMS taxonomy codes.",
+        fields: [
+          { name: "city", label: "City", type: "text", placeholder: "Columbus", default: "Columbus" },
+          { name: "state", label: "State (2-Letter Code)", type: "text", placeholder: "OH", default: "OH" },
+          {
+            name: "taxonomy_description",
+            label: "Medical Specialty Taxonomy",
+            type: "select",
+            default: "Dermatology",
+            options: AESTHETICS_TAXONOMY_PRESETS,
+            helperText: "Pre-filtered by CMS medical taxonomy to eliminate hospitals and non-aesthetic clinics.",
+          },
+          {
+            name: "enumeration_type",
+            label: "Entity Type",
+            type: "select",
+            default: "",
+            options: [
+              { label: "All Entities (Clinics & Physicians)", value: "" },
+              { label: "Organizations & Clinics Only (NPI-2)", value: "NPI-2" },
+              { label: "Individual Doctors Only (NPI-1)", value: "NPI-1" },
+            ],
+          },
+          { name: "postal_code", label: "ZIP Code (Optional)", type: "text", placeholder: "43215", default: "" },
+          { name: "limit", label: "Max Records (Up to 200)", type: "number", default: 20 },
+        ],
+      },
+    ],
+  },
   apify: {
     id: "apify",
     name: "Apify Scraping Hub",
@@ -63,6 +112,7 @@ const REGISTRY: Record<string, ProviderDefinition> = {
               { label: "United States (US)", value: "US" },
               { label: "Canada (CA)", value: "CA" },
               { label: "United Kingdom (GB)", value: "GB" },
+              { label: "India (IN)", value: "IN" },
             ],
           },
           { name: "count", label: "Max Ads to Scrape", type: "number", default: 20 },
@@ -228,12 +278,23 @@ const REGISTRY: Record<string, ProviderDefinition> = {
           { name: "linkedin_url", label: "LinkedIn Profile URL", type: "text", placeholder: "https://linkedin.com/in/username", default: "" },
         ],
       },
+    ],
+  },
+  gmaps: {
+    id: "gmaps",
+    name: "Google Maps Scraper (Self-Hosted)",
+    badge: "Base Shell Integration",
+    description: "Self-hosted Puppeteer scraping service. Connects automatically when your custom Cloud Run or VPS service is online.",
+    missingConfigNotice: "GMAPS_SERVICE_URL is offline. Bring up the scraper container to enable.",
+    tools: [
       {
-        id: "linkedin_to_personal_email_usa",
-        name: "LinkedIn to Personal Email (USA)",
-        description: "Resolves verified US personal email (Gmail/Yahoo/iCloud) for individual physicians or clinic owners.",
+        id: "legacy-scrape",
+        name: "Geographic Discovery & Website Enrichment",
+        description: "Discovers local clinic practices and crawls websites for emails and socials.",
         fields: [
-          { name: "linkedin_url", label: "LinkedIn Profile URL", type: "text", placeholder: "https://linkedin.com/in/username", default: "" },
+          { name: "city", label: "City & State", type: "text", placeholder: "Columbus, OH", default: "Columbus, OH" },
+          { name: "keyword", label: "Keyword", type: "text", placeholder: "med spa", default: "med spa" },
+          { name: "radius", label: "Radius (Meters)", type: "number", default: 3000 },
         ],
       },
     ],
@@ -274,7 +335,6 @@ export default function DynamicSourcePage() {
   const [runResult, setRunResult] = useState<any>(null);
   const [sourceRuns, setSourceRuns] = useState<any[]>([]);
 
-  // Check server configuration
   useEffect(() => {
     fetch("/api/providers")
       .then((res) => res.json())
@@ -300,26 +360,21 @@ export default function DynamicSourcePage() {
     } catch {}
   }
 
-  // Parse workflow chaining URL params and update form reactively
-	useEffect(() => {
-		const stageId = searchParams.get("stageId");
-		if (stageId) {
-			// Fetch server-staged pipeline payload
-			fetch(`/api/pipelines/stage/${stageId}`)
-				.then((res) => res.json())
-				.then((data) => {
-					if (data?.stage?.payload) {
-						const stagedPayload = data.stage.payload;
-						setFormData((prev) => ({
-							...prev,
-							...stagedPayload,
-						}));
-						setStatus("Pre-loaded staged leads from previous workflow run.");
-					}
-				})
-				.catch(() => {});
-		}
-	}, [searchParams]);
+  // Pre-fill workflow chaining parameters from URL
+  useEffect(() => {
+    if (manifest?.tools?.length) {
+      const targetToolFromUrl = searchParams.get("tool");
+      const initialTool = manifest.tools.find((t) => t.id === targetToolFromUrl) || manifest.tools[0]!;
+      setActiveToolId(initialTool.id);
+
+      const defaults: Record<string, any> = {};
+      for (const f of initialTool.fields) {
+        const urlVal = searchParams.get(f.name);
+        defaults[f.name] = urlVal !== null ? urlVal : f.default;
+      }
+      setFormData(defaults);
+    }
+  }, [manifest, searchParams]);
 
   const activeTool = useMemo(() => {
     return manifest?.tools.find((t) => t.id === activeToolId);
@@ -344,7 +399,7 @@ export default function DynamicSourcePage() {
     }));
   }
 
-  // Live polling hook for background Apify runs
+  // Polling hook for background runs
   useEffect(() => {
     if (!runResult?.runId || runResult.status !== "running") return;
 
@@ -355,11 +410,11 @@ export default function DynamicSourcePage() {
 
         if (data?.status === "succeeded") {
           setRunResult(data);
-          setStatus("Scrape completed! Discovered leads ingested into your database.");
+          setStatus("Crawl completed! Discovered leads ingested into your database.");
           loadSourceHistory();
           clearInterval(interval);
         } else if (data?.status === "failed") {
-          setError(data.error || "Actor run failed on Apify.");
+          setError(data.error || "Run failed.");
           setRunResult(data);
           clearInterval(interval);
         }
@@ -396,7 +451,7 @@ export default function DynamicSourcePage() {
       if (data.status === "succeeded") {
         setStatus("Execution completed! Results deduped and stored in database.");
       } else {
-        setStatus("Actor is actively crawling on Apify cloud. Syncing results automatically...");
+        setStatus("Run dispatched. Reconciling records in background...");
       }
       loadSourceHistory();
     } catch (err: any) {
@@ -442,7 +497,7 @@ export default function DynamicSourcePage() {
           {manifest.tools.length > 1 && (
             <div>
               <label className="block text-xs font-semibold mb-1 text-gray-500 uppercase tracking-wider">
-                Select Tool / Scraper Actor
+                Select Tool / Endpoint
               </label>
               <select
                 value={activeToolId}
@@ -502,8 +557,8 @@ export default function DynamicSourcePage() {
           )}
 
           {status && !error && (
-            <div className="p-3 rounded bg-[#e6f2ee] text-[#0f6e56] text-xs border border-[#0f6e56]/30 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#0f6e56] animate-pulse"></span>
+            <div className="p-3 rounded bg-brand-subtle text-brand text-xs border border-brand/30 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-brand animate-pulse"></span>
               <span>{status}</span>
             </div>
           )}
@@ -513,11 +568,11 @@ export default function DynamicSourcePage() {
             disabled={submitting || serverConfigured === false}
             className="btn-primary w-full justify-center disabled:opacity-50"
           >
-            {submitting ? "Executing Scraper..." : `Launch ${activeTool?.name || "Tool"}`}
+            {submitting ? "Executing Discovery..." : `Launch ${activeTool?.name || "Discovery"}`}
           </button>
         </div>
 
-        {/* Live Execution Monitor */}
+        {/* Real-Time Monitor */}
         <div className="card lg:col-span-2 space-y-4">
           <h2 className="text-base font-semibold">Real-Time Execution Monitor</h2>
           {runResult ? (
@@ -525,14 +580,12 @@ export default function DynamicSourcePage() {
               <div className="flex items-center justify-between">
                 <div>
                   <div className="font-semibold text-sm">Run ID: {runResult.runId}</div>
-                  {runResult.apifyRunId && (
-                    <div className="text-xs text-gray-500 font-mono mt-0.5">
-                      Apify Run ID: {runResult.apifyRunId}
-                    </div>
-                  )}
+                  <div className="text-xs text-gray-500 font-mono mt-0.5">
+                    Source: {manifest.id} • Tool: {activeTool?.id}
+                  </div>
                 </div>
                 <span className={`capitalize font-semibold text-xs px-2.5 py-1 rounded-full ${
-                  runResult.status === "succeeded" ? "bg-[#e6f2ee] text-[#0f6e56]" : "bg-amber-100 text-amber-800 animate-pulse"
+                  runResult.status === "succeeded" ? "bg-brand-subtle text-brand" : "bg-amber-100 text-amber-800 animate-pulse"
                 }`}>
                   {runResult.status}
                 </span>
@@ -541,12 +594,7 @@ export default function DynamicSourcePage() {
               {runResult.apifyConsoleUrl && (
                 <div className="p-3 bg-white rounded border text-xs flex items-center justify-between" style={{ borderColor: "var(--border)" }}>
                   <span className="text-gray-600">Live crawler logs on Apify:</span>
-                  <a
-                    href={runResult.apifyConsoleUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[#0f6e56] font-semibold underline text-xs ml-2"
-                  >
+                  <a href={runResult.apifyConsoleUrl} target="_blank" rel="noreferrer" className="text-brand font-semibold underline text-xs ml-2">
                     Open Apify Console ↗
                   </a>
                 </div>
@@ -554,16 +602,16 @@ export default function DynamicSourcePage() {
 
               <div className="grid grid-cols-2 gap-4 pt-2">
                 <div className="bg-white p-4 rounded border text-center" style={{ borderColor: "var(--border)" }}>
-                  <div className="text-xs text-gray-500">Raw Items Discovered</div>
+                  <div className="text-xs text-gray-500">Raw Records Found</div>
                   <div className="text-2xl font-bold mt-1">{runResult.recordsFound ?? 0}</div>
                 </div>
                 <div className="bg-white p-4 rounded border text-center" style={{ borderColor: "var(--border)" }}>
-                  <div className="text-xs text-gray-500">Canonical Leads Deduped</div>
+                  <div className="text-xs text-gray-500">Canonical Leads Ingested</div>
                   <div className="text-2xl font-bold mt-1 text-emerald-800">{runResult.recordsDeduped ?? 0}</div>
                 </div>
               </div>
 
-              {/* Direct route to that run's scoped leads */}
+              {/* Direct Link to that Run's Leads */}
               {runResult.status === "succeeded" && (
                 <div className="pt-2 flex justify-end gap-2">
                   <Link href={`/runs/${runResult.runId}`} className="btn-primary text-xs">
@@ -574,13 +622,13 @@ export default function DynamicSourcePage() {
             </div>
           ) : (
             <div className="text-center py-20 text-sm text-gray-400">
-              Configure parameters on the left and click <b>Launch</b>. Discovered leads will be deduplicated, scored, and stored in your database.
+              Configure search parameters on the left and click <b>Launch</b>. Discovered practices and doctors will be deduplicated, scored, and stored in your database.
             </div>
           )}
         </div>
       </div>
 
-      {/* Historical Runs for this Specific Provider */}
+      {/* Historical Runs for this Source */}
       <div className="card overflow-hidden p-0">
         <div className="p-4 border-b font-semibold text-sm bg-[#f7f7f5]" style={{ borderColor: "var(--border)" }}>
           Run History for {manifest.name} ({sourceRuns.length})
@@ -603,14 +651,14 @@ export default function DynamicSourcePage() {
             ) : (
               sourceRuns.map((r) => (
                 <tr key={r.id} className="border-b hover:bg-gray-50/50 cursor-pointer" onClick={() => router.push(`/runs/${r.id}`)}>
-                  <td className="py-2.5 px-4 font-mono text-xs font-semibold text-[#0f6e56]">{r.id.slice(0, 8)}...</td>
+                  <td className="py-2.5 px-4 font-mono text-xs font-semibold text-brand">{r.id.slice(0, 8)}...</td>
                   <td className="py-2.5 px-4 text-xs font-medium">{r.source_id.split(":")[1] || r.source_id}</td>
                   <td className="py-2.5 px-4"><span className="badge-teal capitalize">{r.status}</span></td>
                   <td className="py-2.5 px-4">{r.records_raw}</td>
                   <td className="py-2.5 px-4 font-bold text-emerald-800">{r.records_deduped}</td>
                   <td className="py-2.5 px-4 text-xs text-gray-400">{new Date(r.created_at).toLocaleDateString()}</td>
                   <td className="py-2.5 px-4 text-right">
-                    <span className="text-xs text-[#0f6e56] font-semibold underline">View Scoped Leads →</span>
+                    <span className="text-xs text-brand font-semibold underline">View Scoped Leads →</span>
                   </td>
                 </tr>
               ))

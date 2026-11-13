@@ -1,3 +1,6 @@
+import { VALID_EMPLOYEE_RANGES } from "@/lib/providers/moltsets";
+import { AESTHETICS_TAXONOMY_PRESETS } from "@/lib/providers/nppes";
+
 export type FieldType = "text" | "number" | "select";
 
 export interface FieldDefinition {
@@ -26,26 +29,88 @@ export interface ProviderManifest {
   tools: ToolManifest[];
 }
 
-export const apifyManifest: ProviderManifest = {
-  id: "apify",
-  name: "Apify Scraping Hub",
-  badge: "Cloud Actor Container",
-  description: "Managed serverless actors: Google Maps discovery, website content crawling, and proxy rotation.",
-  missingConfigNotice: "APIFY_TOKEN is missing. Please add it to your environment variables.",
+// 1. NPPES FEDERAL MEDICAL REGISTRY ($0.00 FREE PUBLIC API)
+export const nppesManifest: ProviderManifest = {
+  id: "nppes",
+  name: "NPPES Medical Registry (CMS NPI)",
+  badge: "Federal Gold Standard ($0.00)",
+  description: "Official CMS National Provider Identifier database: 100% verified legal clinic names, official direct phones, physical addresses, and licensed Medical Directors.",
   tools: [
     {
-      id: "gmaps",
-      name: "Google Maps Scraper",
-      description: "Extracts clinic businesses, addresses, ratings, review counts, coordinates, and phone numbers.",
+      id: "search_npi",
+      name: "Physician & Clinic Taxonomy Search",
+      description: "Discover verified medical practices and directors across US cities and states with official CMS taxonomy codes.",
       fields: [
-        { name: "city", label: "Target City & State", type: "text", placeholder: "Columbus, OH", default: "Columbus, OH" },
-        { name: "keyword", label: "Healthcare Niche / Keyword", type: "text", placeholder: "med spa", default: "med spa" },
-        { name: "maxResults", label: "Max Places to Crawl", type: "number", default: 20, helperText: "Controls Apify run credits." },
+        { name: "city", label: "City", type: "text", placeholder: "Columbus", default: "Columbus" },
+        { name: "state", label: "State (2-Letter Code)", type: "text", placeholder: "OH", default: "OH" },
+        {
+          name: "taxonomy_description",
+          label: "Medical Specialty Taxonomy",
+          type: "select",
+          default: "Dermatology",
+          options: AESTHETICS_TAXONOMY_PRESETS,
+          helperText: "Pre-filtered by CMS medical taxonomy to eliminate hospitals and non-aesthetic clinics.",
+        },
+        {
+          name: "enumeration_type",
+          label: "Entity Type",
+          type: "select",
+          default: "",
+          options: [
+            { label: "All Entities (Clinics & Physicians)", value: "" },
+            { label: "Organizations & Clinics Only (NPI-2)", value: "NPI-2" },
+            { label: "Individual Doctors Only (NPI-1)", value: "NPI-1" },
+          ],
+        },
+        { name: "postal_code", label: "ZIP Code (Optional)", type: "text", placeholder: "43215", default: "" },
+        { name: "limit", label: "Max Records (Up to 200)", type: "number", default: 20 },
       ],
     },
   ],
 };
 
+// 2. APIFY SCRAPING HUB
+export const apifyManifest: ProviderManifest = {
+  id: "apify",
+  name: "Apify Scraping Hub",
+  badge: "Cloud Actor Container",
+  description: "Managed serverless actors: Facebook Ad Library, LinkedIn Jobs, B2B Lead Enricher, and Google Search.",
+  missingConfigNotice: "APIFY_TOKEN is missing. Please add it to your environment variables.",
+  tools: [
+    {
+      id: "facebook-ads",
+      name: "Facebook Ads Library Scraper",
+      description: "Scrapes active commercial ad campaigns, creatives, impressions, and advertiser links.",
+      fields: [
+        { name: "query", label: "Search Phrase or Facebook Page URL", type: "text", placeholder: "MedSpa in Ohio", default: "MedSpa in Ohio" },
+        { name: "country", label: "Target Country Code", type: "select", default: "ALL", options: [{ label: "All Countries", value: "ALL" }, { label: "United States (US)", value: "US" }] },
+        { name: "count", label: "Max Ads to Scrape", type: "number", default: 20 },
+      ],
+    },
+    {
+      id: "linkedin-jobs",
+      name: "LinkedIn Jobs Hiring Scraper",
+      description: "Extracts practices hiring for key roles (Medical Director, Esthetician) with recruiter contacts.",
+      fields: [
+        { name: "keywords", label: "Job Title or Role", type: "text", placeholder: "Medical Director", default: "Medical Director" },
+        { name: "location", label: "Target Location", type: "text", placeholder: "Columbus, OH", default: "Columbus, OH" },
+        { name: "limit", label: "Max Jobs to Scrape", type: "number", default: 20 },
+      ],
+    },
+    {
+      id: "google-search",
+      name: "Google Search Results Scraper",
+      description: "Extracts organic search results and filters out national directories (Expedia, TripAdvisor).",
+      fields: [
+        { name: "queries", label: "Google Search Queries", type: "text", placeholder: "Hotels in Seattle", default: "Hotels in Seattle" },
+        { name: "countryCode", label: "Country Code", type: "select", default: "us", options: [{ label: "United States (us)", value: "us" }] },
+        { name: "maxPagesPerQuery", label: "Max Pages per Query", type: "number", default: 1 },
+      ],
+    },
+  ],
+};
+
+// 3. MOLTSETS CONTACT API
 export const moltsetsManifest: ProviderManifest = {
   id: "moltsets",
   name: "MoltSets Contact API",
@@ -67,21 +132,20 @@ export const moltsetsManifest: ProviderManifest = {
           options: [
             { label: "All Executives (Owner, C-Suite, VP, Partner, Director)", value: "all_executives" },
             { label: "Owners & Partners Only", value: "owners_only" },
-            { label: "C-Suite Executives Only", value: "c_suite_only" },
             { label: "Any Seniority", value: "any" },
           ],
         },
         { name: "country", label: "Country", type: "text", placeholder: "United States", default: "United States" },
         { name: "state", label: "State (Optional)", type: "text", placeholder: "Ohio, Texas, California", default: "" },
         {
-          name: "industry",
-          label: "Industry Filter (Optional)",
+          name: "maxPerCompany",
+          label: "Max Contacts Per Practice",
           type: "select",
-          default: "Health and Pharmaceuticals",
+          default: "2",
           options: [
-            { label: "Health and Pharmaceuticals", value: "Health and Pharmaceuticals" },
-            { label: "Professional and Business Services", value: "Professional and Business Services" },
-            { label: "Any Industry", value: "" },
+            { label: "Max 1 per company", value: "1" },
+            { label: "Max 2 per company (Recommended)", value: "2" },
+            { label: "Unlimited", value: "99" },
           ],
         },
         { name: "limit", label: "Result Count (Max 25)", type: "number", default: 10 },
@@ -92,25 +156,9 @@ export const moltsetsManifest: ProviderManifest = {
       name: "Batch Decision-Makers Across Companies",
       description: "Paste up to 100 clinic domains. Fetches senior executives across all companies in a single request.",
       fields: [
-        {
-          name: "domains",
-          label: "Company Domains (Comma or Line-Separated)",
-          type: "text",
-          placeholder: "glowaesthetics.com, buckeyeskin.com",
-          default: "",
-          helperText: "Paste up to 100 domains. Excludes any domain already in your Pyro suppression list.",
-        },
+        { name: "domains", label: "Company Domains", type: "text", placeholder: "glowaesthetics.com, buckeyeskin.com", default: "" },
         { name: "title", label: "Job Title Filter (Optional)", type: "text", placeholder: "Medical Director, Owner", default: "" },
         { name: "limit", label: "Result Limit (Max 25)", type: "number", default: 25 },
-      ],
-    },
-    {
-      id: "search_companies",
-      name: "Healthcare Clinic Search (search_companies)",
-      description: "Discover healthcare practices and clinics by niche and location with verified corporate domain details.",
-      fields: [
-        { name: "query", label: "Clinic / Niche Query", type: "text", placeholder: "med spa", default: "med spa" },
-        { name: "limit", label: "Result Limit (Max 25)", type: "number", default: 10 },
       ],
     },
     {
@@ -121,25 +169,31 @@ export const moltsetsManifest: ProviderManifest = {
         { name: "linkedin_url", label: "LinkedIn Profile URL", type: "text", placeholder: "https://linkedin.com/in/username", default: "" },
       ],
     },
+  ],
+};
+
+// 4. SELF-HOSTED GMAPS BASE SHELL (Preserved for Future Activation)
+export const gmapsManifest: ProviderManifest = {
+  id: "gmaps",
+  name: "Google Maps Scraper (Self-Hosted)",
+  badge: "Base Shell Integration",
+  description: "Self-hosted Puppeteer scraping service. Connects automatically when your custom Cloud Run or VPS service is online.",
+  missingConfigNotice: "GMAPS_SERVICE_URL is offline. Bring up the scraper container to enable.",
+  tools: [
     {
-      id: "linkedin_to_personal_email_usa",
-      name: "LinkedIn to Personal Email (USA)",
-      description: "Resolves verified US personal email (Gmail/Yahoo/iCloud) for individual physicians or clinic owners.",
+      id: "legacy-scrape",
+      name: "Geographic Discovery & Website Enrichment",
+      description: "Discovers local clinic practices and crawls websites for emails and socials.",
       fields: [
-        { name: "linkedin_url", label: "LinkedIn Profile URL", type: "text", placeholder: "https://linkedin.com/in/username", default: "" },
-      ],
-    },
-    {
-      id: "linkedin_to_mobile_phone",
-      name: "LinkedIn to Mobile Phone",
-      description: "Retrieves carrier-verified mobile phone numbers (requires active phone token subscription).",
-      fields: [
-        { name: "linkedin_url", label: "LinkedIn Profile URL", type: "text", placeholder: "https://linkedin.com/in/username", default: "" },
+        { name: "city", label: "City & State", type: "text", placeholder: "Columbus, OH", default: "Columbus, OH" },
+        { name: "keyword", label: "Keyword", type: "text", placeholder: "med spa", default: "med spa" },
+        { name: "radius", label: "Radius (Meters)", type: "number", default: 3000 },
       ],
     },
   ],
 };
 
+// 5. SYNTHETIC TEST PROVIDER
 export const mockManifest: ProviderManifest = {
   id: "mock",
   name: "Synthetic Test Generator",
@@ -156,8 +210,10 @@ export const mockManifest: ProviderManifest = {
 };
 
 const manifestsMap: Record<string, ProviderManifest> = {
+  [nppesManifest.id]: nppesManifest,
   [apifyManifest.id]: apifyManifest,
   [moltsetsManifest.id]: moltsetsManifest,
+  [gmapsManifest.id]: gmapsManifest,
   [mockManifest.id]: mockManifest,
 };
 

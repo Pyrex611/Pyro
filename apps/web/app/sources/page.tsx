@@ -4,14 +4,20 @@ import Link from "next/link";
 
 const providers = [
   {
+    id: "nppes",
+    name: "NPPES Medical Registry (CMS NPI)",
+    badge: "Federal Gold Standard ($0.00)",
+    description: "Official CMS National Provider Identifier database: 100% verified legal clinic names, official direct phones, physical addresses, and licensed Medical Directors.",
+    tools: ["Physician & Clinic Taxonomy Search"],
+  },
+  {
     id: "apify",
     name: "Apify Scraping Hub",
     badge: "Cloud Actor Container",
-    description: "Managed serverless actors: Facebook Ads Library, LinkedIn Jobs, B2B Lead Enricher, and Google Search scraper.",
+    description: "Managed serverless actors: Facebook Ad Library, LinkedIn Jobs, B2B Lead Enricher, and Google Search.",
     tools: [
       "Facebook Ads Library Scraper",
       "LinkedIn Jobs Hiring Scraper",
-      "B2B Lead Scraper & Enricher",
       "Google Search Results Scraper",
       "Google Maps Places Scraper",
     ],
@@ -24,11 +30,17 @@ const providers = [
     tools: [
       "Decision-Maker Search",
       "Batch Domain Decision-Makers",
-      "Clinic Company Search",
       "LinkedIn to Best Email",
       "LinkedIn to Personal Email (USA)",
       "LinkedIn to Mobile Phone",
     ],
+  },
+  {
+    id: "gmaps",
+    name: "Google Maps Scraper (Self-Hosted)",
+    badge: "Base Shell Integration",
+    description: "Self-hosted Puppeteer scraping service. Connects automatically when your custom Cloud Run or VPS service is online.",
+    tools: ["Geographic Discovery & Website Enrichment"],
   },
   {
     id: "mock",
@@ -45,7 +57,7 @@ export default function SourcesPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Sources & Provider Hubs</h1>
         <p className="text-sm text-gray-500">
-          Select a provider container to configure and execute specialized scrapers and enrichment tools.
+          Select a provider container to configure and execute specialized scrapers, registries, and enrichment tools.
         </p>
       </div>
 
@@ -82,7 +94,7 @@ export default function SourcesPage() {
             <div className="mt-6 pt-4 border-t flex items-center justify-between" style={{ borderColor: "var(--border)" }}>
               <span className="text-xs font-mono text-gray-400">Provider: {p.id}</span>
               <span className="btn-primary text-xs px-3 py-1.5">
-                Open Container Hub →
+                Open Provider Hub →
               </span>
             </div>
           </Link>

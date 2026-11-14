@@ -12,6 +12,7 @@
     "build": "npm run build --workspace apps/web",
     "start": "next start apps/web",
     "typecheck": "tsc --noEmit",
+    "test": "npm run test --workspace packages/core",
     "migrate": "node scripts/migrate.mjs",
     "seed": "node scripts/seed.mjs",
     "mock:scrape": "node scripts/mock-scraper.mjs"

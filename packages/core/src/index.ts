@@ -3,3 +3,4 @@ export * from "./normalize";
 export * from "./dedupe";
 export * from "./scoring";
 export * from "./store";
+export * from "./budget";
